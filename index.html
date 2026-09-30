@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>課堂互動與公告儀表板</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts Inter & Noto Sans TC for maximum legibility -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Noto+Sans+TC:wght@400;600;700;900&display=swap" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Noto Sans TC"', 'sans-serif'],
+            mono: ['"Chakra Petch"', 'monospace'],
+          },
+          colors: {
+            classroom: {
+              bg: '#F3F4F6',
+              card: '#FFFFFF',
+              dark: '#111827',
+              accent: '#2563EB',
+              lemon: '#FEF08A',
+              peach: '#FECDD3',
+              mint: '#A7F3D0',
+              sky: '#BAE6FD',
+              lavender: '#E9D5FF'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* 設定全域字型尺寸以舒適度為主：兼顧清晰與版面緊湊協調 */
+    html {
+      font-size: 16px;
+    }
+    @media (min-width: 768px) {
+      html {
+        font-size: 17px;
+      }
+    }
+    @media (min-width: 1280px) {
+      html {
+        font-size: 18px;
+      }
+    }
+    body {
+      background-color: #F8FAFC;
+      color: #0F172A;
+      user-select: none;
+      overflow-x: hidden;
+    }
+    .sticky-note-input {
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+    /* 倒數計時器數字跳動平滑化 */
+    .timer-digits {
+      font-feature-settings: "tnum";
+      font-variant-numeric: tabular-nums;
+    }
+    /* 擬真便箋陰影與微旋轉手感 */
+    .note-shadow {
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04), 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col p-3 sm:p-5 lg:p-6 font-sans antialiased text-slate-900 bg-slate-100">
+
+  <!-- 頂部資訊看板：日期、時間、星期與快捷操作 (確保標題不換行) -->
+  <header class="w-full bg-white rounded-2xl border-4 border-slate-800 shadow-md p-3 sm:p-4 lg:p-5 mb-5 flex flex-wrap items-center justify-between gap-4">
+    <!-- 日期與星期區塊 -->
+    <div class="flex items-center space-x-3 whitespace-nowrap min-w-max">
+      <div class="bg-amber-400 border-2 border-slate-900 w-11 h-11 sm:w-12 sm:h-12 rounded-xl shadow-sm text-slate-950 font-black text-xl flex items-center justify-center shrink-0">
+        📅
+      </div>
+      <div>
+        <div id="currentDate" class="text-xl sm:text-2xl font-black tracking-normal text-slate-900 whitespace-nowrap">
+          2026 年 00 月 00 日
+        </div>
+        <div class="flex items-center gap-2 mt-0.5 whitespace-nowrap">
+          <span id="currentWeekday" class="bg-indigo-600 text-white font-bold px-2.5 py-0.5 rounded-lg text-sm sm:text-base">
+            星期一
+          </span>
+          <span class="text-slate-600 font-bold text-sm sm:text-base" id="lunarInfo">課堂互動進行中</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 24小時制高對比時鐘 -->
+    <div class="flex items-center bg-slate-900 text-white px-4 sm:px-6 py-2 rounded-xl border-2 border-slate-950 shadow-inner whitespace-nowrap">
+      <span class="text-slate-400 font-bold mr-2.5 text-sm sm:text-base hidden sm:inline">現正時間</span>
+      <div id="currentTime" class="font-mono text-2xl sm:text-3xl md:text-4xl font-black tracking-widest text-emerald-400 timer-digits">
+        00:00:00
+      </div>
+    </div>
+
+    <!-- 右上快捷按鈕群：抽籤工具 (防止文字斷行) -->
+    <div class="flex items-center gap-2 whitespace-nowrap">
+      <button id="randomPickBtn" class="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-slate-950 font-black px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl border-2 border-slate-900 shadow transition flex items-center gap-2 text-base shrink-0" title="隨機點名抽籤">
+        <span>🎲</span>
+        <span class="whitespace-nowrap">隨機抽籤</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 主要工作區：左側計時器，右側數位便利貼白板 -->
+  <main class="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 items-start w-full">
+    
+    <!-- 左側欄位：倒數計時器 (大螢幕佔 4 格，小螢幕自適應) -->
+    <section class="w-full lg:col-span-4 bg-white rounded-2xl border-4 border-slate-800 p-4 sm:p-5 shadow-md flex flex-col gap-4 lg:sticky lg:top-4">
+      <div class="flex justify-between items-center border-b-2 border-slate-200 pb-3 gap-2">
+        <h2 class="text-xl sm:text-2xl font-black flex items-center gap-2 text-slate-900 whitespace-nowrap">
+          <span>⏱️</span>
+          <span class="whitespace-nowrap">課堂倒數計時器</span>
+        </h2>
+        <span id="timerStatusBadge" class="bg-slate-200 text-slate-800 text-xs sm:text-sm font-bold px-2.5 py-1 rounded-full border border-slate-400 whitespace-nowrap shrink-0">
+          待命
+        </span>
+      </div>
+
+      <!-- 計時大數字展示窗 -->
+      <div id="timerDisplayBox" class="bg-slate-900 rounded-2xl p-5 text-center border-4 border-slate-800 transition-all duration-300">
+        <div id="timerDisplay" class="font-mono text-5xl sm:text-6xl font-black text-amber-400 tracking-wider timer-digits">
+          05:00
+        </div>
+        <!-- 進度條 -->
+        <div class="w-full bg-slate-800 rounded-full h-3 mt-3 overflow-hidden border border-slate-700">
+          <div id="timerProgressBar" class="bg-amber-400 h-full w-full transition-all duration-500"></div>
+        </div>
+      </div>
+
+      <!-- 計時操作按鈕：開始、暫停、重置 -->
+      <div class="grid grid-cols-3 gap-2 sm:gap-3">
+        <button id="startTimerBtn" class="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black py-2.5 rounded-xl border-2 border-slate-900 shadow text-base sm:text-lg transition flex items-center justify-center gap-1 whitespace-nowrap">
+          <span>▶</span> 開始
+        </button>
+        <button id="pauseTimerBtn" class="bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-black py-2.5 rounded-xl border-2 border-slate-900 shadow text-base sm:text-lg transition flex items-center justify-center gap-1 whitespace-nowrap" disabled>
+          <span>⏸</span> 暫停
+        </button>
+        <button id="resetTimerBtn" class="bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-black py-2.5 rounded-xl border-2 border-slate-900 shadow text-base sm:text-lg transition flex items-center justify-center gap-1 whitespace-nowrap">
+          <span>↺</span> 重置
+        </button>
+      </div>
+
+      <!-- 自訂時間輸入區 (分、秒) -->
+      <div class="bg-slate-50 p-3.5 rounded-xl border-2 border-slate-300 flex flex-col gap-2.5">
+        <div class="flex items-center justify-between text-slate-800 font-bold whitespace-nowrap gap-2">
+          <span class="text-base font-black whitespace-nowrap">⚙️ 自訂計時</span>
+          <span class="text-xs text-slate-500 whitespace-nowrap">單位：分與秒</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="flex-1 flex items-center bg-white border-2 border-slate-700 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-blue-500 min-w-0">
+            <input type="number" id="inputMinutes" min="0" max="180" value="5" class="w-full text-center font-bold text-lg outline-none text-slate-900">
+            <span class="text-slate-600 font-bold ml-1 text-xs shrink-0">分</span>
+          </div>
+          <span class="font-black text-lg shrink-0">:</span>
+          <div class="flex-1 flex items-center bg-white border-2 border-slate-700 rounded-xl px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-blue-500 min-w-0">
+            <input type="number" id="inputSeconds" min="0" max="59" value="0" step="5" class="w-full text-center font-bold text-lg outline-none text-slate-900">
+            <span class="text-slate-600 font-bold ml-1 text-xs shrink-0">秒</span>
+          </div>
+          <button id="applyCustomTimeBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-1.5 rounded-xl border-2 border-slate-900 shadow text-sm sm:text-base active:scale-95 transition whitespace-nowrap shrink-0">
+            設定
+          </button>
+        </div>
+      </div>
+
+      <!-- 課堂情境快選按鈕 -->
+      <div class="flex flex-col gap-1.5">
+        <span class="text-slate-700 font-bold text-xs sm:text-sm whitespace-nowrap">常見課堂快選：</span>
+        <div class="grid grid-cols-4 gap-1.5 sm:gap-2">
+          <button class="preset-btn bg-white hover:bg-slate-200 border-2 border-slate-800 font-bold py-1.5 rounded-lg text-sm shadow-sm active:scale-95 transition whitespace-nowrap" data-minutes="1">1 分</button>
+          <button class="preset-btn bg-white hover:bg-slate-200 border-2 border-slate-800 font-bold py-1.5 rounded-lg text-sm shadow-sm active:scale-95 transition whitespace-nowrap" data-minutes="3">3 分</button>
+          <button class="preset-btn bg-white hover:bg-slate-200 border-2 border-slate-800 font-bold py-1.5 rounded-lg text-sm shadow-sm active:scale-95 transition whitespace-nowrap" data-minutes="5">5 分</button>
+          <button class="preset-btn bg-white hover:bg-slate-200 border-2 border-slate-800 font-bold py-1.5 rounded-lg text-sm shadow-sm active:scale-95 transition whitespace-nowrap" data-minutes="10">10 分</button>
+          <button class="preset-btn bg-white hover:bg-slate-200 border-2 border-slate-800 font-bold py-1.5 rounded-lg text-sm shadow-sm active:scale-95 transition whitespace-nowrap" data-minutes="15">15 分</button>
+          <button class="preset-btn bg-white hover:bg-slate-200 border-2 border-slate-800 font-bold py-1.5 rounded-lg text-sm shadow-sm active:scale-95 transition whitespace-nowrap" data-minutes="20">20 分</button>
+          <button class="preset-btn bg-white hover:bg-slate-200 border-2 border-slate-800 font-bold py-1.5 rounded-lg text-sm shadow-sm active:scale-95 transition whitespace-nowrap" data-minutes="30">30 分</button>
+          <button class="preset-btn bg-white hover:bg-slate-200 border-2 border-slate-800 font-bold py-1.5 rounded-lg text-sm shadow-sm active:scale-95 transition whitespace-nowrap" data-minutes="45">45 分</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 右側欄位：數位白板與公告便利貼 (大螢幕佔 8 格) -->
+    <section class="w-full lg:col-span-8 bg-white rounded-2xl border-4 border-slate-800 p-4 sm:p-5 shadow-md flex flex-col min-h-[500px]">
+      
+      <!-- 白板功能工具列：標題與按鈕確保整齊單行 -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b-2 border-slate-200 mb-4">
+        <div class="flex items-center gap-2.5 whitespace-nowrap min-w-max">
+          <div class="bg-indigo-100 text-indigo-700 w-10 h-10 rounded-xl border-2 border-indigo-400 font-black text-xl flex items-center justify-center shrink-0">
+            📌
+          </div>
+          <div>
+            <h2 class="text-xl sm:text-2xl font-black text-slate-900 whitespace-nowrap">課堂公告白板</h2>
+            <p class="text-xs font-bold text-slate-500 whitespace-nowrap hidden sm:block">點擊即可直接修改，自動儲存至本機</p>
+          </div>
+        </div>
+
+        <!-- 便利貼色彩與新增按鈕 (不換行排列) -->
+        <div class="flex items-center gap-2.5 flex-nowrap shrink-0">
+          <div class="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-300" title="選擇新便箋顏色">
+            <span class="text-xs font-bold text-slate-600 pl-1 whitespace-nowrap hidden xs:inline">色系:</span>
+            <button data-color="yellow" class="color-picker-btn w-6 h-6 rounded-lg bg-yellow-200 border-2 border-yellow-400 ring-2 ring-slate-900 shrink-0" title="鵝黃色"></button>
+            <button data-color="pink" class="color-picker-btn w-6 h-6 rounded-lg bg-rose-200 border-2 border-rose-400 shrink-0" title="柔粉紅"></button>
+            <button data-color="green" class="color-picker-btn w-6 h-6 rounded-lg bg-emerald-200 border-2 border-emerald-400 shrink-0" title="薄荷綠"></button>
+            <button data-color="blue" class="color-picker-btn w-6 h-6 rounded-lg bg-sky-200 border-2 border-sky-400 shrink-0" title="晴空藍"></button>
+            <button data-color="purple" class="color-picker-btn w-6 h-6 rounded-lg bg-purple-200 border-2 border-purple-400 shrink-0" title="紫藤色"></button>
+          </div>
+
+          <button id="addNoteBtn" class="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold px-3.5 py-2 rounded-xl border-2 border-slate-900 shadow text-sm sm:text-base transition flex items-center gap-1.5 whitespace-nowrap shrink-0">
+            <span>➕</span>
+            <span class="whitespace-nowrap">新增便利貼</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 便利貼展示牆 (自適應網格：手機單欄、平板雙欄、大螢幕三欄) -->
+      <div id="notesContainer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 flex-1 content-start auto-rows-max w-full">
+        <!-- 動態便利貼插入處 -->
+      </div>
+
+      <!-- 空白狀態提示 (若無便利貼時呈現) -->
+      <div id="emptyNotesMsg" class="hidden flex-col items-center justify-center py-16 text-center">
+        <span class="text-5xl mb-2">📝</span>
+        <h3 class="text-xl font-black text-slate-700 mb-1 whitespace-nowrap">目前沒有便利貼公告</h3>
+        <p class="text-slate-500 font-bold text-sm">點擊右上角「➕ 新增便利貼」，發佈今日注意事項與隨堂任務吧！</p>
+      </div>
+
+      <!-- 白板底部快速資訊 -->
+      <div class="mt-4 pt-3 border-t-2 border-slate-200 flex flex-wrap items-center justify-between text-xs sm:text-sm text-slate-600 font-bold gap-2">
+        <span id="noteCounterText" class="whitespace-nowrap">共 0 則重要提醒</span>
+        <button id="clearAllNotesBtn" class="text-rose-600 hover:text-rose-800 underline transition cursor-pointer whitespace-nowrap">
+          清空所有便利貼
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 底部常用網站書籤區塊 (支援新增、編輯、刪除) -->
+  <footer class="w-full mt-5 bg-white rounded-2xl border-4 border-slate-800 p-4 sm:p-5 shadow-md">
+    <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b-2 border-slate-200 mb-4">
+      <div class="flex items-center gap-2.5 whitespace-nowrap min-w-max">
+        <div class="bg-amber-100 text-amber-800 w-10 h-10 rounded-xl border-2 border-amber-400 font-black text-xl flex items-center justify-center shrink-0">
+          🔗
+        </div>
+        <div>
+          <h2 class="text-xl sm:text-2xl font-black text-slate-900 whitespace-nowrap">常用教學書籤</h2>
+          <p class="text-xs font-bold text-slate-500 whitespace-nowrap hidden sm:block">點擊快速開啟教學平台或課堂資源網站</p>
+        </div>
+      </div>
+      <button id="addBookmarkBtn" class="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold px-3.5 py-2 rounded-xl border-2 border-slate-900 shadow text-sm sm:text-base transition flex items-center gap-1.5 whitespace-nowrap shrink-0">
+        <span>➕</span>
+        <span class="whitespace-nowrap">新增書籤</span>
+      </button>
+    </div>
+
+    <!-- 書籤列表容器 -->
+    <div id="bookmarksContainer" class="flex flex-wrap gap-2.5 sm:gap-3 items-center">
+      <!-- 動態載入書籤項目 -->
+    </div>
+  </footer>
+
+  <!-- 書籤新增 / 編輯彈窗 (Modal) -->
+  <div id="bookmarkModal" class="fixed inset-0 bg-slate-950/70 hidden items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-3xl border-4 border-slate-900 max-w-md w-full p-6 shadow-2xl flex flex-col gap-4">
+      <div class="flex justify-between items-center border-b-2 border-slate-200 pb-2">
+        <h3 id="bookmarkModalTitle" class="text-2xl font-black text-slate-900 flex items-center gap-2">
+          <span>🔖</span> 新增網站書籤
+        </h3>
+        <button id="closeBookmarkModalBtn" class="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xl flex items-center justify-center">
+          ✕
+        </button>
+      </div>
+
+      <form id="bookmarkForm" class="flex flex-col gap-3">
+        <input type="hidden" id="bookmarkEditId" value="">
+        <div>
+          <label class="block text-sm font-black text-slate-800 mb-1">書籤名稱</label>
+          <input type="text" id="bookmarkTitleInput" required placeholder="例如：Google 課堂、教育部雲端" class="w-full px-3 py-2 border-2 border-slate-700 rounded-xl font-bold text-base focus:ring-2 focus:ring-blue-500 outline-none">
+        </div>
+
+        <div>
+          <label class="block text-sm font-black text-slate-800 mb-1">網址 (URL)</label>
+          <input type="url" id="bookmarkUrlInput" required placeholder="https://example.com" class="w-full px-3 py-2 border-2 border-slate-700 rounded-xl font-bold text-base focus:ring-2 focus:ring-blue-500 outline-none">
+        </div>
+
+        <div>
+          <label class="block text-sm font-black text-slate-800 mb-1">圖示 (Emoji)</label>
+          <div class="flex items-center gap-2">
+            <input type="text" id="bookmarkIconInput" maxlength="2" value="🌐" class="w-16 text-center text-2xl py-1.5 border-2 border-slate-700 rounded-xl font-bold">
+            <div class="flex gap-1.5 overflow-x-auto py-1">
+              <button type="button" class="preset-emoji-btn text-xl p-1 hover:bg-slate-200 rounded-lg">🌐</button>
+              <button type="button" class="preset-emoji-btn text-xl p-1 hover:bg-slate-200 rounded-lg">📚</button>
+              <button type="button" class="preset-emoji-btn text-xl p-1 hover:bg-slate-200 rounded-lg">✏️</button>
+              <button type="button" class="preset-emoji-btn text-xl p-1 hover:bg-slate-200 rounded-lg">🎓</button>
+              <button type="button" class="preset-emoji-btn text-xl p-1 hover:bg-slate-200 rounded-lg">▶️</button>
+              <button type="button" class="preset-emoji-btn text-xl p-1 hover:bg-slate-200 rounded-lg">📊</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 mt-3">
+          <button type="button" id="cancelBookmarkBtn" class="bg-slate-200 hover:bg-slate-300 font-extrabold py-2.5 rounded-xl border-2 border-slate-800 text-slate-800 text-base transition">
+            取消
+          </button>
+          <button type="submit" class="bg-emerald-500 hover:bg-emerald-600 font-extrabold py-2.5 rounded-xl border-2 border-slate-800 text-slate-950 text-base transition">
+            儲存書籤
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 隨機抽籤點名浮動彈窗 (Modal) -->
+  <div id="pickerModal" class="fixed inset-0 bg-slate-950/70 hidden items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-3xl border-4 border-slate-900 max-w-md w-full p-6 shadow-2xl flex flex-col gap-4 transform transition-all">
+      <div class="flex justify-between items-center border-b-2 border-slate-200 pb-2">
+        <h3 class="text-2xl font-black text-slate-900 flex items-center gap-2">
+          <span>🎯</span> 隨機抽籤神器
+        </h3>
+        <button id="closePickerBtn" class="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xl flex items-center justify-center">
+          ✕
+        </button>
+      </div>
+
+      <!-- 抽籤號碼展示窗 -->
+      <div class="bg-slate-900 rounded-2xl p-8 text-center border-4 border-slate-800">
+        <span class="text-slate-400 font-bold text-sm block mb-1">幸運號碼 / 學生座號</span>
+        <div id="pickedResultDisplay" class="font-mono text-7xl font-black text-emerald-400 tracking-wider">
+          ?
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <label class="text-base font-bold text-slate-800 whitespace-nowrap">座號範圍：</label>
+        <input type="number" id="pickerMin" value="1" min="1" max="999" class="w-24 text-center font-bold text-lg p-2 border-2 border-slate-800 rounded-xl">
+        <span class="font-bold text-slate-600">至</span>
+        <input type="number" id="pickerMax" value="35" min="1" max="999" class="w-24 text-center font-bold text-lg p-2 border-2 border-slate-800 rounded-xl">
+      </div>
+
+      <button id="rollPickerBtn" class="bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-slate-950 font-black py-3 rounded-2xl border-2 border-slate-900 shadow text-xl transition">
+        開始抽籤！
+      </button>
+    </div>
+  </div>
+
+  <!-- 自訂確認視窗 (替代原生 confirm，杜絕 alert/confirm) -->
+  <div id="confirmModal" class="fixed inset-0 bg-slate-950/70 hidden items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-3xl border-4 border-slate-900 max-w-sm w-full p-6 shadow-2xl flex flex-col gap-4 text-center">
+      <div class="text-5xl">⚠️</div>
+      <h3 id="confirmModalTitle" class="text-2xl font-black text-slate-900">確認操作？</h3>
+      <p id="confirmModalDesc" class="text-slate-600 font-bold text-base">此動作無法還原，請確認是否執行。</p>
+      <div class="grid grid-cols-2 gap-3 mt-2">
+        <button id="confirmCancelBtn" class="bg-slate-200 hover:bg-slate-300 font-extrabold py-2.5 rounded-xl border-2 border-slate-800 text-slate-800 text-lg transition">
+          取消
+        </button>
+        <button id="confirmOkBtn" class="bg-rose-500 hover:bg-rose-600 font-extrabold py-2.5 rounded-xl border-2 border-slate-800 text-white text-lg transition">
+          確認刪除
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* =========================================================
+     * 1. 課堂儀表板：時間、日期與星期即時更新模組
+     * ========================================================= */
+    const dateEl = document.getElementById('currentDate');
+    const weekdayEl = document.getElementById('currentWeekday');
+    const timeEl = document.getElementById('currentTime');
+
+    const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+
+    function updateClock() {
+      const now = new Date();
+      
+      // 西元年、月、日
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      dateEl.textContent = `${year} 年 ${month} 月 ${day} 日`;
+
+      // 星期幾
+      weekdayEl.textContent = weekdays[now.getDay()];
+
+      // 24小時制時間 (HH:MM:SS)
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      timeEl.textContent = `${hours}:${minutes}:${seconds}`;
+    }
+
+    // 每秒精準更新
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    /* =========================================================
+     * 2. Web Audio API 課堂溫馨提示鐘聲 (不依賴外部檔案，保證發聲)
+     * ========================================================= */
+    function playChime() {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+
+        // 溫和清脆的兩段式和弦鈴聲 (880Hz -> 1046Hz)
+        const notes = [
+          { freq: 880, delay: 0, duration: 0.6 },
+          { freq: 1174.66, delay: 0.25, duration: 0.8 },
+          { freq: 1760, delay: 0.5, duration: 1.2 }
+        ];
+
+        notes.forEach(note => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(note.freq, ctx.currentTime + note.delay);
+
+          gain.gain.setValueAtTime(0, ctx.currentTime + note.delay);
+          gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + note.delay + 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + note.delay + note.duration);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+
+          osc.start(ctx.currentTime + note.delay);
+          osc.stop(ctx.currentTime + note.delay + note.duration);
+        });
+      } catch (e) {
+        console.error('音效播放失敗:', e);
+      }
+    }
+
+    /* =========================================================
+     * 3. 倒數計時器控制邏輯
+     * ========================================================= */
+    let timerTotalSeconds = 5 * 60;
+    let timerRemainingSeconds = 5 * 60;
+    let timerInterval = null;
+    let isTimerRunning = false;
+
+    const timerDisplay = document.getElementById('timerDisplay');
+    const timerProgressBar = document.getElementById('timerProgressBar');
+    const timerDisplayBox = document.getElementById('timerDisplayBox');
+    const timerStatusBadge = document.getElementById('timerStatusBadge');
+    const startTimerBtn = document.getElementById('startTimerBtn');
+    const pauseTimerBtn = document.getElementById('pauseTimerBtn');
+    const resetTimerBtn = document.getElementById('resetTimerBtn');
+    const inputMinutes = document.getElementById('inputMinutes');
+    const inputSeconds = document.getElementById('inputSeconds');
+    const applyCustomTimeBtn = document.getElementById('applyCustomTimeBtn');
+
+    function formatTime(totalSeconds) {
+      const mins = Math.floor(totalSeconds / 60);
+      const secs = totalSeconds % 60;
+      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    function renderTimer() {
+      timerDisplay.textContent = formatTime(timerRemainingSeconds);
+      
+      // 更新進度條
+      const percentage = timerTotalSeconds > 0 ? (timerRemainingSeconds / timerTotalSeconds) * 100 : 0;
+      timerProgressBar.style.width = `${Math.max(0, percentage)}%`;
+
+      // 剩餘時間緊張警示顏色變化
+      if (timerRemainingSeconds <= 30 && timerRemainingSeconds > 0) {
+        timerDisplay.classList.remove('text-amber-400');
+        timerDisplay.classList.add('text-rose-500');
+        timerProgressBar.classList.remove('bg-amber-400');
+        timerProgressBar.classList.add('bg-rose-500');
+      } else {
+        timerDisplay.classList.add('text-amber-400');
+        timerDisplay.classList.remove('text-rose-500');
+        timerProgressBar.classList.add('bg-amber-400');
+        timerProgressBar.classList.remove('bg-rose-500');
+      }
+    }
+
+    function startTimer() {
+      if (isTimerRunning || timerRemainingSeconds <= 0) return;
+      isTimerRunning = true;
+      startTimerBtn.disabled = true;
+      pauseTimerBtn.disabled = false;
+      timerStatusBadge.textContent = '計時中';
+      timerStatusBadge.className = 'bg-emerald-100 text-emerald-800 text-sm font-bold px-2.5 py-1 rounded-full border border-emerald-400';
+
+      timerInterval = setInterval(() => {
+        if (timerRemainingSeconds > 0) {
+          timerRemainingSeconds--;
+          renderTimer();
+        } else {
+          // 時間到
+          clearInterval(timerInterval);
+          isTimerRunning = false;
+          startTimerBtn.disabled = false;
+          pauseTimerBtn.disabled = true;
+          timerStatusBadge.textContent = '時間到！';
+          timerStatusBadge.className = 'bg-rose-100 text-rose-800 text-sm font-bold px-2.5 py-1 rounded-full border border-rose-400 animate-pulse';
+
+          // 視覺與聽覺提醒
+          playChime();
+          flashTimerBox();
+        }
+      }, 1000);
+    }
+
+    function pauseTimer() {
+      if (!isTimerRunning) return;
+      clearInterval(timerInterval);
+      isTimerRunning = false;
+      startTimerBtn.disabled = false;
+      pauseTimerBtn.disabled = true;
+      timerStatusBadge.textContent = '已暫停';
+      timerStatusBadge.className = 'bg-amber-100 text-amber-800 text-sm font-bold px-2.5 py-1 rounded-full border border-amber-400';
+    }
+
+    function resetTimer() {
+      clearInterval(timerInterval);
+      isTimerRunning = false;
+      timerRemainingSeconds = timerTotalSeconds;
+      startTimerBtn.disabled = false;
+      pauseTimerBtn.disabled = true;
+      timerStatusBadge.textContent = '待命';
+      timerStatusBadge.className = 'bg-slate-200 text-slate-800 text-sm font-bold px-2.5 py-1 rounded-full border border-slate-400';
+      renderTimer();
+    }
+
+    function setTimerDuration(mins, secs = 0) {
+      const m = Math.max(0, parseInt(mins) || 0);
+      const s = Math.max(0, Math.min(59, parseInt(secs) || 0));
+      const total = m * 60 + s;
+      if (total <= 0) return;
+      
+      clearInterval(timerInterval);
+      isTimerRunning = false;
+      timerTotalSeconds = total;
+      timerRemainingSeconds = total;
+      inputMinutes.value = m;
+      inputSeconds.value = s;
+      startTimerBtn.disabled = false;
+      pauseTimerBtn.disabled = true;
+      timerStatusBadge.textContent = '待命';
+      timerStatusBadge.className = 'bg-slate-200 text-slate-800 text-sm font-bold px-2.5 py-1 rounded-full border border-slate-400';
+      renderTimer();
+    }
+
+    function flashTimerBox() {
+      timerDisplayBox.classList.add('ring-8', 'ring-rose-500', 'bg-rose-950');
+      setTimeout(() => {
+        timerDisplayBox.classList.remove('ring-8', 'ring-rose-500', 'bg-rose-950');
+      }, 3000);
+    }
+
+    startTimerBtn.addEventListener('click', startTimer);
+    pauseTimerBtn.addEventListener('click', pauseTimer);
+    resetTimerBtn.addEventListener('click', resetTimer);
+
+    applyCustomTimeBtn.addEventListener('click', () => {
+      setTimerDuration(inputMinutes.value, inputSeconds.value);
+    });
+
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mins = btn.getAttribute('data-minutes');
+        setTimerDuration(mins, 0);
+      });
+    });
+
+    /* =========================================================
+     * 4. 數位便利貼白板資料與邏輯 (含 LocalStorage 本地儲存)
+     * ========================================================= */
+    const notesContainer = document.getElementById('notesContainer');
+    const emptyNotesMsg = document.getElementById('emptyNotesMsg');
+    const noteCounterText = document.getElementById('noteCounterText');
+    const addNoteBtn = document.getElementById('addNoteBtn');
+    const clearAllNotesBtn = document.getElementById('clearAllNotesBtn');
+    const colorPickerBtns = document.querySelectorAll('.color-picker-btn');
+
+    let selectedColor = 'yellow';
+
+    // 便利貼色彩樣式配置 (高對比色彩)
+    const colorThemes = {
+      yellow: {
+        bg: 'bg-amber-100',
+        border: 'border-amber-400',
+        tagBg: 'bg-amber-300',
+        text: 'text-amber-950',
+        btnHover: 'hover:bg-amber-200'
+      },
+      pink: {
+        bg: 'bg-rose-100',
+        border: 'border-rose-400',
+        tagBg: 'bg-rose-300',
+        text: 'text-rose-950',
+        btnHover: 'hover:bg-rose-200'
+      },
+      green: {
+        bg: 'bg-emerald-100',
+        border: 'border-emerald-400',
+        tagBg: 'bg-emerald-300',
+        text: 'text-emerald-950',
+        btnHover: 'hover:bg-emerald-200'
+      },
+      blue: {
+        bg: 'bg-sky-100',
+        border: 'border-sky-400',
+        tagBg: 'bg-sky-300',
+        text: 'text-sky-950',
+        btnHover: 'hover:bg-sky-200'
+      },
+      purple: {
+        bg: 'bg-purple-100',
+        border: 'border-purple-400',
+        tagBg: 'bg-purple-300',
+        text: 'text-purple-950',
+        btnHover: 'hover:bg-purple-200'
+      }
+    };
+
+    // 預設範例筆記
+    const initialDefaultNotes = [
+      {
+        id: 'note-1',
+        tag: '今日重點',
+        content: '翻開課本第 42 頁，完成「分組探索問題三」。\n注意：計算過程請清楚寫在學習單上！',
+        color: 'yellow',
+        pinned: true
+      },
+      {
+        id: 'note-2',
+        tag: '課堂作業',
+        content: '1. 習作 P.20 ~ P.22\n2. 預習下一單元生字\n明天早自習前由各組長收齊送至講桌。',
+        color: 'blue',
+        pinned: false
+      },
+      {
+        id: 'note-3',
+        tag: '重要提醒',
+        content: '下週二校外教學通知單尚未繳回的同學，今日放學前請務必交給學藝股長！',
+        color: 'pink',
+        pinned: false
+      }
+    ];
+
+    let notes = [];
+
+    // 載入筆記
+    function loadNotes() {
+      const saved = localStorage.getItem('classroom_dashboard_notes');
+      if (saved) {
+        try {
+          notes = JSON.parse(saved);
+        } catch (e) {
+          notes = initialDefaultNotes;
+        }
+      } else {
+        notes = initialDefaultNotes;
+      }
+      renderNotes();
+    }
+
+    // 儲存筆記
+    function saveNotes() {
+      localStorage.setItem('classroom_dashboard_notes', JSON.stringify(notes));
+      renderNotes();
+    }
+
+    function renderNotes() {
+      notesContainer.innerHTML = '';
+
+      if (notes.length === 0) {
+        emptyNotesMsg.classList.remove('hidden');
+        emptyNotesMsg.classList.add('flex');
+      } else {
+        emptyNotesMsg.classList.add('hidden');
+        emptyNotesMsg.classList.remove('flex');
+      }
+
+      noteCounterText.textContent = `共 ${notes.length} 則便利貼公告`;
+
+      // 置頂的排在最前
+      const sortedNotes = [...notes].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+
+      sortedNotes.forEach(note => {
+        const theme = colorThemes[note.color] || colorThemes.yellow;
+
+        const card = document.createElement('div');
+        card.className = `${theme.bg} ${theme.border} border-3 rounded-2xl p-4 flex flex-col justify-between transition-transform duration-200 note-shadow min-h-[220px] relative`;
+
+        card.innerHTML = `
+          <div>
+            <!-- 便利貼頂部操作 -->
+            <div class="flex items-center justify-between gap-2 mb-3">
+              <div class="flex items-center gap-1.5">
+                <button class="pin-btn text-xl transition transform active:scale-125" data-id="${note.id}" title="${note.pinned ? '取消置頂' : '置頂此便利貼'}">
+                  ${note.pinned ? '📌' : '📍'}
+                </button>
+                <input type="text" value="${escapeHtml(note.tag)}" data-id="${note.id}" class="note-tag-input ${theme.tagBg} ${theme.text} px-2.5 py-0.5 rounded-lg font-black text-sm border border-black/10 outline-none w-28" placeholder="分類標籤">
+              </div>
+
+              <!-- 換色或刪除 -->
+              <div class="flex items-center gap-1">
+                <button class="delete-note-btn text-slate-500 hover:text-rose-600 font-bold p-1 rounded-lg text-lg transition" data-id="${note.id}" title="刪除此公告">
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <!-- 便箋內容主體 (支援多行直接點擊編輯) -->
+            <textarea data-id="${note.id}" class="note-content-input w-full bg-transparent resize-none border-none outline-none font-bold text-slate-900 sticky-note-input h-32 leading-relaxed" placeholder="在此輸入公告內容...">${escapeHtml(note.content)}</textarea>
+          </div>
+
+          <!-- 便箋底端快捷色彩小點 -->
+          <div class="flex items-center justify-between pt-2 border-t border-black/10 mt-2">
+            <span class="text-xs font-semibold text-slate-500">${note.pinned ? '已置頂' : '公告'}</span>
+            <div class="flex items-center gap-1">
+              ${Object.keys(colorThemes).map(c => `
+                <button data-id="${note.id}" data-color="${c}" class="change-note-color w-4 h-4 rounded-full ${colorThemes[c].bg} ${colorThemes[c].border} border hover:scale-125 transition"></button>
+              `).join('')}
+            </div>
+          </div>
+        `;
+
+        notesContainer.appendChild(card);
+      });
+
+      attachNoteInteractions();
+    }
+
+    // 輔助防 XSS
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function attachNoteInteractions() {
+      // 標籤修改
+      document.querySelectorAll('.note-tag-input').forEach(input => {
+        input.addEventListener('change', (e) => {
+          const id = e.target.getAttribute('data-id');
+          const target = notes.find(n => n.id === id);
+          if (target) {
+            target.tag = e.target.value.trim() || '重要提醒';
+            saveNotes();
+          }
+        });
+      });
+
+      // 內容修改
+      document.querySelectorAll('.note-content-input').forEach(textarea => {
+        textarea.addEventListener('input', (e) => {
+          const id = e.target.getAttribute('data-id');
+          const target = notes.find(n => n.id === id);
+          if (target) {
+            target.content = e.target.value;
+            // 隨打即存至 localStorage
+            localStorage.setItem('classroom_dashboard_notes', JSON.stringify(notes));
+          }
+        });
+      });
+
+      // 置頂切換
+      document.querySelectorAll('.pin-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const id = btn.getAttribute('data-id');
+          const target = notes.find(n => n.id === id);
+          if (target) {
+            target.pinned = !target.pinned;
+            saveNotes();
+          }
+        });
+      });
+
+      // 便箋換色
+      document.querySelectorAll('.change-note-color').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          const newColor = btn.getAttribute('data-color');
+          const target = notes.find(n => n.id === id);
+          if (target && colorThemes[newColor]) {
+            target.color = newColor;
+            saveNotes();
+          }
+        });
+      });
+
+      // 刪除單個便箋
+      document.querySelectorAll('.delete-note-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          showConfirmModal('確定刪除這張便利貼？', '刪除後將無法還原該內容。', () => {
+            notes = notes.filter(n => n.id !== id);
+            saveNotes();
+          });
+        });
+      });
+    }
+
+    // 選擇即將新增便箋的色系
+    colorPickerBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        colorPickerBtns.forEach(b => b.classList.remove('ring-2', 'ring-slate-900'));
+        btn.classList.add('ring-2', 'ring-slate-900');
+        selectedColor = btn.getAttribute('data-color');
+      });
+    });
+
+    // 新增便箋
+    addNoteBtn.addEventListener('click', () => {
+      const newNote = {
+        id: 'note-' + Date.now(),
+        tag: '課堂公告',
+        content: '請在此輸入給學生的提醒項目...',
+        color: selectedColor,
+        pinned: false
+      };
+      notes.unshift(newNote);
+      saveNotes();
+    });
+
+    // 清空全部便利貼
+    clearAllNotesBtn.addEventListener('click', () => {
+      showConfirmModal('清空所有公告便利貼？', '這將會清除白板上的所有便箋！', () => {
+        notes = [];
+        saveNotes();
+      });
+    });
+
+    /* =========================================================
+     * 5. 自訂對話框 (無 alert / confirm)
+     * ========================================================= */
+    const confirmModal = document.getElementById('confirmModal');
+    const confirmModalTitle = document.getElementById('confirmModalTitle');
+    const confirmModalDesc = document.getElementById('confirmModalDesc');
+    const confirmCancelBtn = document.getElementById('confirmCancelBtn');
+    const confirmOkBtn = document.getElementById('confirmOkBtn');
+    let onConfirmCallback = null;
+
+    function showConfirmModal(title, desc, onOk) {
+      confirmModalTitle.textContent = title;
+      confirmModalDesc.textContent = desc;
+      onConfirmCallback = onOk;
+      confirmModal.classList.remove('hidden');
+      confirmModal.classList.add('flex');
+    }
+
+    function closeConfirmModal() {
+      confirmModal.classList.add('hidden');
+      confirmModal.classList.remove('flex');
+      onConfirmCallback = null;
+    }
+
+    confirmCancelBtn.addEventListener('click', closeConfirmModal);
+    confirmOkBtn.addEventListener('click', () => {
+      if (typeof onConfirmCallback === 'function') {
+        onConfirmCallback();
+      }
+      closeConfirmModal();
+  });
+
+  /* =========================================================
+   * STREAMING_CHUNK:Initializing bookmark management logic...
+   * 6. 網站書籤功能模組 (新增、修改、刪除與本地儲存)
+   * ========================================================= */
+  const bookmarksContainer = document.getElementById('bookmarksContainer');
+  const bookmarkModal = document.getElementById('bookmarkModal');
+  const bookmarkModalTitle = document.getElementById('bookmarkModalTitle');
+  const bookmarkForm = document.getElementById('bookmarkForm');
+  const bookmarkEditId = document.getElementById('bookmarkEditId');
+  const bookmarkTitleInput = document.getElementById('bookmarkTitleInput');
+  const bookmarkUrlInput = document.getElementById('bookmarkUrlInput');
+  const bookmarkIconInput = document.getElementById('bookmarkIconInput');
+  const addBookmarkBtn = document.getElementById('addBookmarkBtn');
+  const closeBookmarkModalBtn = document.getElementById('closeBookmarkModalBtn');
+  const cancelBookmarkBtn = document.getElementById('cancelBookmarkBtn');
+
+  const defaultBookmarks = [
+    { id: 'bm-1', title: 'Google Classroom', url: 'https://classroom.google.com', icon: '🎓' },
+    { id: 'bm-2', title: 'YouTube 教育', url: 'https://www.youtube.com', icon: '▶️' },
+    { id: 'bm-3', title: 'Kahoot! 測驗', url: 'https://kahoot.it', icon: '⚡' },
+    { id: 'bm-4', title: '線上字典 / 辭典', url: 'https://dict.concised.moe.edu.tw/', icon: '📚' }
+  ];
+
+  let bookmarks = [];
+
+  function loadBookmarks() {
+    const saved = localStorage.getItem('classroom_dashboard_bookmarks');
+    if (saved) {
+      try {
+        bookmarks = JSON.parse(saved);
+      } catch (e) {
+        bookmarks = defaultBookmarks;
+      }
+    } else {
+      bookmarks = defaultBookmarks;
+    }
+    renderBookmarks();
+  }
+
+  function saveBookmarks() {
+    localStorage.setItem('classroom_dashboard_bookmarks', JSON.stringify(bookmarks));
+    renderBookmarks();
+  }
+
+  function renderBookmarks() {
+    bookmarksContainer.innerHTML = '';
+    if (bookmarks.length === 0) {
+      bookmarksContainer.innerHTML = `<span class="text-slate-400 font-bold text-sm">尚無書籤，點擊右上角「➕ 新增書籤」加入常用的課堂網址！</span>`;
+      return;
+    }
+
+    bookmarks.forEach(bm => {
+      const badge = document.createElement('div');
+      badge.className = 'group relative flex items-center bg-slate-50 hover:bg-slate-100 border-2 border-slate-800 rounded-xl px-3 py-2 shadow-sm transition-all hover:-translate-y-0.5';
+
+      badge.innerHTML = `
+        <a href="${escapeHtml(bm.url)}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 text-slate-800 font-black text-sm sm:text-base whitespace-nowrap">
+          <span>${escapeHtml(bm.icon || '🌐')}</span>
+          <span class="hover:text-blue-600 transition">${escapeHtml(bm.title)}</span>
+        </a>
+        <div class="flex items-center gap-1 ml-2 pl-2 border-l border-slate-300">
+          <button data-id="${bm.id}" class="edit-bm-btn text-slate-400 hover:text-blue-600 p-0.5 rounded text-xs" title="編輯書籤">
+            ✏️
+          </button>
+          <button data-id="${bm.id}" class="delete-bm-btn text-slate-400 hover:text-rose-600 p-0.5 rounded text-xs" title="刪除書籤">
+            ✕
+          </button>
+        </div>
+      `;
+
+      bookmarksContainer.appendChild(badge);
+    });
+
+    // 綁定編輯與刪除事件
+    document.querySelectorAll('.edit-bm-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-id');
+        openEditBookmarkModal(id);
+      });
+    });
+
+    document.querySelectorAll('.delete-bm-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-id');
+        const target = bookmarks.find(b => b.id === id);
+        showConfirmModal('確定刪除此書籤？', `書籤「${target ? target.title : ''}」將被移除。`, () => {
+          bookmarks = bookmarks.filter(b => b.id !== id);
+          saveBookmarks();
+        });
+      });
+    });
+  }
+
+  function openAddBookmarkModal() {
+    bookmarkModalTitle.innerHTML = `<span>🔖</span> 新增網站書籤`;
+    bookmarkEditId.value = '';
+    bookmarkTitleInput.value = '';
+    bookmarkUrlInput.value = 'https://';
+    bookmarkIconInput.value = '🌐';
+    bookmarkModal.classList.remove('hidden');
+    bookmarkModal.classList.add('flex');
+    bookmarkTitleInput.focus();
+  }
+
+  function openEditBookmarkModal(id) {
+    const bm = bookmarks.find(b => b.id === id);
+    if (!bm) return;
+    bookmarkModalTitle.innerHTML = `<span>✏️</span> 編輯網站書籤`;
+    bookmarkEditId.value = bm.id;
+    bookmarkTitleInput.value = bm.title;
+    bookmarkUrlInput.value = bm.url;
+    bookmarkIconInput.value = bm.icon || '🌐';
+    bookmarkModal.classList.remove('hidden');
+    bookmarkModal.classList.add('flex');
+    bookmarkTitleInput.focus();
+  }
+
+  function closeBookmarkModal() {
+    bookmarkModal.classList.add('hidden');
+    bookmarkModal.classList.remove('flex');
+  }
+
+  addBookmarkBtn.addEventListener('click', openAddBookmarkModal);
+  closeBookmarkModalBtn.addEventListener('click', closeBookmarkModal);
+  cancelBookmarkBtn.addEventListener('click', closeBookmarkModal);
+
+  document.querySelectorAll('.preset-emoji-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      bookmarkIconInput.value = btn.textContent;
+    });
+  });
+
+  bookmarkForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const title = bookmarkTitleInput.value.trim();
+    let url = bookmarkUrlInput.value.trim();
+    const icon = bookmarkIconInput.value.trim() || '🌐';
+    const editId = bookmarkEditId.value;
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+
+    if (editId) {
+      // 編輯
+      const target = bookmarks.find(b => b.id === editId);
+      if (target) {
+        target.title = title;
+        target.url = url;
+        target.icon = icon;
+      }
+    } else {
+      // 新增
+      bookmarks.push({
+        id: 'bm-' + Date.now(),
+        title,
+        url,
+        icon
+      });
+    }
+
+    saveBookmarks();
+    closeBookmarkModal();
+  });
+
+  /* =========================================================
+   * 7. 隨機點名抽籤器 (Random Student Picker)
+   * ========================================================= */
+  const pickerModal = document.getElementById('pickerModal');
+    const randomPickBtn = document.getElementById('randomPickBtn');
+    const closePickerBtn = document.getElementById('closePickerBtn');
+    const rollPickerBtn = document.getElementById('rollPickerBtn');
+    const pickerMin = document.getElementById('pickerMin');
+    const pickerMax = document.getElementById('pickerMax');
+    const pickedResultDisplay = document.getElementById('pickedResultDisplay');
+
+    randomPickBtn.addEventListener('click', () => {
+      pickerModal.classList.remove('hidden');
+      pickerModal.classList.add('flex');
+    });
+
+    closePickerBtn.addEventListener('click', () => {
+      pickerModal.classList.add('hidden');
+      pickerModal.classList.remove('flex');
+    });
+
+    let rollingInterval = null;
+    rollPickerBtn.addEventListener('click', () => {
+      const min = parseInt(pickerMin.value) || 1;
+      const max = parseInt(pickerMax.value) || 35;
+      if (min >= max) return;
+
+      rollPickerBtn.disabled = true;
+      let counter = 0;
+      clearInterval(rollingInterval);
+
+      rollingInterval = setInterval(() => {
+        const rand = Math.floor(Math.random() * (max - min + 1)) + min;
+        pickedResultDisplay.textContent = rand;
+        counter++;
+
+        if (counter > 18) {
+          clearInterval(rollingInterval);
+          rollPickerBtn.disabled = false;
+          playChime();
+        }
+      }, 70);
+    });
+
+    // 初始化載入
+  loadNotes();
+  loadBookmarks();
+  renderTimer();
+</script>
+</body>
+</html>
