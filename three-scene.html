@@ -81,15 +81,21 @@
       border: 0.6cqw solid transparent; border-top-color: #fff;
     }
 
-    /* ----- 播放控制列（滑鼠移動時才出現） ----- */
+    /* ----- 播放控制列（按 H 可隱藏，方便錄影） ----- */
     #hud {
       position: absolute; left: 0; right: 0; bottom: 0;
       display: flex; align-items: center; gap: 1.2cqw;
       padding: 1cqw 2cqw;
       background: linear-gradient(transparent, rgba(15, 23, 34, 0.55));
-      opacity: 0; transition: opacity 0.3s;
+      transition: opacity 0.3s;
     }
-    #stage.show-hud #hud, #stage.free #hud { opacity: 1; }
+    #stage.hide-hud #hud { opacity: 0; pointer-events: none; }
+    #bar { touch-action: none; }
+    #bar .knob {
+      position: absolute; top: 50%; width: 1.5cqw; height: 1.5cqw; border-radius: 50%;
+      background: #fff; transform: translate(-50%, -50%);
+      box-shadow: 0 0.2cqw 0.6cqw rgba(0, 0, 0, 0.35);
+    }
     #hud button {
       width: 3cqw; height: 3cqw; border: 0; border-radius: 50%;
       background: #fff; color: #16213a; font-size: 1.2cqw; cursor: pointer;
@@ -127,7 +133,8 @@
     </div>
     <div id="hud">
       <button id="playBtn" title="播放／暫停（空白鍵）">❚❚</button>
-      <div id="bar"><div id="fill"></div></div>
+      <button id="restartBtn" title="從頭播放">⏮</button>
+      <div id="bar"><div id="fill"></div><div class="knob" id="knob"></div></div>
       <span id="time">0.0 / 61s</span>
     </div>
   </div>
@@ -849,99 +856,159 @@
       draw(c, s.canvas.width, s.canvas.height, value ?? undefined);
       c.restore();
       s.tex.needsUpdate = true;
-      if (name === 'analyzer') M.green.emissiveIntensity = state === 'off' ? 0 : 1.2;  // 電源燈跟著開關
       return true;
     }
 
     // =====================================================
-    //  QA-100 操作指南：61 秒時間軸
-    //  所有畫面、動作、鏡頭都由「時間 t」直接算出來，所以可以任意跳轉、暫停、重播
+    //  分鏡時間軸
+    //  每一段 = 長度 dur、鏡頭位置 cam、鏡頭看向 look、這段要做的動作 act
+    //  每一幀都「從初始狀態重算」：先回到初始狀態，再依序套用已經開始的每一段
+    //  → 改任何一段的長度，後面會自動順延；時間軸可以任意拖曳
     // =====================================================
     const V = (x, y, z) => new THREE.Vector3(x, y, z);
     const clamp01 = x => Math.min(1, Math.max(0, x));
     const smooth = x => { x = clamp01(x); return x * x * (3 - 2 * x); };
-    const ramp = (t, a, b) => smooth((t - a) / (b - a));       // a→b 之間 0→1
-    const q = (x, s) => Math.round(x / s) * s;                    // 量化，避免每格都重畫
-    const DURATION = 61;
+    const ramp = (t, a, b) => smooth((t - a) / (b - a));       // a→b 之間平滑地 0→1
+    const q = (x, s) => Math.round(x / s) * s;                    // 量化，避免每一幀都重畫螢幕
 
-    // ----- 分段（對照分鏡表） -----
-    //  [開始, 結束, 鏡頭, 段落標籤, 字卡]
-    const SEGS = [
-      [0, 4, 'intro', null, null],
-      [4, 10, 'overview', '總覽', '準備物品'],
-      [10, 15, 'power', 'STEP 1', '開啟電源'],
-      [15, 20, 'screen', 'STEP 2', '開始檢測'],
-      [20, 25, 'phone', 'STEP 3', '會員 App 登入'],
-      [25, 31, 'door', 'STEP 4', '插入試片'],
-      [31, 36, 'screen', 'STEP 5', '掃描試片'],
-      [36, 41, 'screen', 'STEP 6', '等待反應'],
-      [41, 46, 'screen', 'STEP 7', '分析與結果'],
-      [46, 52, 'aerial', 'STEP 8', '結果同步'],
-      [52, 57, 'door', 'STEP 9', '取出試片'],
-      [57, 61, 'outro', null, null],
-    ];
-    const segIndex = t => Math.max(0, SEGS.findIndex(s => t >= s[0] && t < s[1]));
-
-    // ----- 鏡頭：每個鏡位從 p0/t0 慢慢推到 p1/t1（位置 / 看的點） -----
-    // 分析儀螢幕中心與法線（斜面朝前上方）
-    const scrC = new THREE.Vector3(), scrN = V(0, Math.cos(slope), Math.sin(slope));
+    // 常用鏡位：分析儀螢幕正前方（沿著螢幕法線往外 2.55）、前方艙門
     scene.updateMatrixWorld(true);
-    touchScreen.getWorldPosition(scrC);
-    const scrCam = d => scrC.clone().addScaledVector(scrN, d);
-    const SHOTS = {
-      intro:    { p0: V(12, 2.6, 1.2),  p1: V(10.6, 3.0, 3.4), t0: V(0, 2.3, 0.3), t1: V(0, 2.3, 0.3) },
-      overview: { p0: V(1.8, 4.8, 9.8), p1: V(0.6, 4.2, 8.6), t0: V(0, 0.7, 0.6), t1: V(0, 0.7, 0.6) },
-      power:    { p0: V(2.7, 3.7, 2.5), p1: V(2.3, 3.3, 2.0), t0: V(0.7, 1.4, -0.5), t1: V(0.75, 1.4, -0.55) },
-      screen:   { p0: scrCam(2.55), p1: scrCam(2.3), t0: scrC.clone(), t1: scrC.clone() },
-      phone:    { p0: V(3.0, 3.3, 5.6), p1: V(2.4, 3.0, 5.0), t0: V(1.7, 1.0, 0.2), t1: V(1.7, 1.0, 0.2) },
-      door:     { p0: V(2.1, 2.1, 5.3), p1: V(1.4, 1.8, 4.7), t0: V(0.1, 0.5, 1.5), t1: V(0.1, 0.5, 1.5) },
-      aerial:   { p0: V(0.8, 11.5, 5.6), p1: V(-0.6, 11, 6.2), t0: V(0, 0, 0.6), t1: V(0, 0, 0.6) },
-      outro:    { p0: V(1.5, 4.3, 8.6), p1: V(2.2, 5.6, 11.5), t0: V(0, 0.8, 0.6), t1: V(0, 0.8, 0.6) },
+    const scrC = touchScreen.getWorldPosition(new THREE.Vector3());
+    const scrN = V(0, Math.cos(slope), Math.sin(slope));
+    const SCREEN = { cam: scrC.clone().addScaledVector(scrN, 2.55), look: scrC.clone() };
+    const DOOR = { cam: V(2.1, 2.1, 5.3), look: V(0.1, 0.6, 1.5) };
+
+    // ----- 分鏡表 -----
+    //  act(S, u, dur)：u = 這一段開始後經過的秒數（0 ~ dur），把結果寫進狀態 S
+    const STORYBOARD = [
+      { name: '片頭', dur: 4, cam: V(11.5, 2.8, 2.2), look: V(0, 2.3, 0.3),
+        act: (S, u) => { S.introT = u; } },
+
+      { name: '總覽', tag: '總覽', card: '準備物品', dur: 6, cam: V(1.6, 4.7, 9.6), look: V(0, 0.7, 0.6),
+        act: (S, u, d) => { S.labels = [u, d]; } },
+
+      { name: 'STEP 1', tag: 'STEP 1', card: '開啟電源', dur: 5, cam: V(2.7, 3.7, 2.5), look: V(0.7, 1.4, -0.5),
+        act: (S, u) => {
+          S.btnPress = ramp(u, 0.8, 1.0) - ramp(u, 1.1, 1.4);     // 按下電源鍵再彈起
+          S.ripple = (u - 0.9) / 0.8;                              // 按鍵漣漪
+          if (u >= 1.3) S.powerOn = true;                          // 電源燈亮
+          S.ringPulse = (u - 1.3) / 0.7;
+          if (u >= 1.3) S.analyzer = ['booting', q(clamp01((u - 1.3) / 3.3), 0.02)];
+          if (u >= 4.8) S.analyzer = ['home'];
+        } },
+
+      { name: 'STEP 2', tag: 'STEP 2', card: '開始檢測', dur: 5, ...SCREEN,
+        act: (S, u) => {
+          S.analyzer = ['home', u >= 2 && u < 2.8 ? { tap: q((u - 2) / 0.8, 0.05) } : undefined];
+          if (u >= 3.6) S.analyzer = ['loginQR'];
+        } },
+
+      { name: 'STEP 3', tag: 'STEP 3', card: '會員 App 登入', dur: 5, cam: V(3.0, 3.3, 5.6), look: V(1.7, 1.0, 0.2),
+        act: (S, u) => {
+          if (u >= 0.6) S.phone = ['camera'];
+          S.loginLink = [ramp(u, 1.2, 2.4), ramp(u, 1.1, 1.3) * (1 - ramp(u, 4.2, 4.8))];   // [延伸進度, 透明度]
+          if (u >= 3.0) S.phone = ['loginSuccess'];
+          if (u >= 3.5) S.analyzer = ['insertStrip'];
+        } },
+
+      { name: 'STEP 4', tag: 'STEP 4', card: '插入試片', dur: 6, ...DOOR,
+        act: (S, u) => {
+          S.door = ramp(u, 0.4, 1.4) - ramp(u, 4.3, 5.2);          // 開門 → 關門
+          S.strip = ramp(u, 1.6, 3.2) + ramp(u, 3.2, 4.0);         // 0 盒內 → 1 沿弧線到門口 → 2 推進機器
+        } },
+
+      { name: 'STEP 5', tag: 'STEP 5', card: '掃描試片', dur: 5, ...SCREEN,
+        act: (S, u) => { S.analyzer = u < 3 ? ['scanning', q(u * 5, 0.1)] : ['verified']; } },
+
+      { name: 'STEP 6', tag: 'STEP 6', card: '等待反應', dur: 5, ...SCREEN,
+        act: (S, u, d) => {
+          const k = clamp01(u / (d - 0.4));                        // 15 → 0，最後 0.4 秒停在 0
+          S.analyzer = ['countdown', { sec: Math.ceil(15 * (1 - k)), total: 15, frac: q(1 - k, 0.005), badge: '縮時示範' }];
+        } },
+
+      { name: 'STEP 7', tag: 'STEP 7', card: '分析與結果', dur: 5, ...SCREEN,
+        act: (S, u) => { S.analyzer = u < 3.6 ? ['analyzing', Math.round(clamp01(u / 3.4) * 100)] : ['result', 5.0]; } },
+
+      { name: 'STEP 8', tag: 'STEP 8', card: '結果同步', dur: 6, cam: V(0.4, 11.3, 5.9), look: V(0, 0, 0.6),
+        act: (S, u) => {
+          if (u >= 0.2) S.analyzer = ['saved', 5.0];
+          S.sync = 0.55 * ramp(u, 0.4, 0.9) * (1 - ramp(u, 5.2, 5.8));   // 虛線透明度
+          S.syncT = u;                                                     // 光點依這個時間移動
+          if (u >= 2.7) S.phone = ['latestResult', 5.0];
+          if (u >= 3.2) S.laptop = ['table', 5.0];
+        } },
+
+      { name: 'STEP 9', tag: 'STEP 9', card: '取出試片', dur: 5, ...DOOR,
+        act: (S, u) => {
+          S.door = ramp(u, 0.3, 1.2) - ramp(u, 3.9, 4.7);
+          S.strip = 2 - ramp(u, 1.4, 2.2) - ramp(u, 2.2, 3.9);     // 滑出到門口 → 沿弧線回到盒子
+          if (u >= 3.5) S.analyzer = ['home'];
+        } },
+
+      { name: '片尾', dur: 4, cam: V(2.0, 5.4, 11), look: V(0, 0.8, 0.6),
+        act: (S, u) => { S.outroT = u; } },
+    ];
+    let DURATION = 0;
+    for (const seg of STORYBOARD) { seg.start = DURATION; DURATION += seg.dur; }
+
+    // ----- 初始狀態 -----
+    const initialState = () => ({
+      analyzer: ['off'], phone: ['login'], laptop: ['overview', { today: 12 }],
+      powerOn: false, btnPress: 0, ripple: -1, ringPulse: -1,
+      door: 0, strip: 0,
+      loginLink: [0, 0], sync: 0, syncT: -1,
+      introT: -1, labels: [-1, 1], outroT: -1,
+    });
+    // 從初始狀態開始，依序套用 t 之前已經開始的每一段
+    function stateAt(t) {
+      const S = initialState();
+      for (const seg of STORYBOARD) {
+        if (t < seg.start) break;
+        seg.act?.(S, Math.min(t - seg.start, seg.dur), seg.dur);
+      }
+      return S;
+    }
+    const segIndexAt = t => {
+      const i = STORYBOARD.findIndex(s => t < s.start + s.dur);
+      return i < 0 ? STORYBOARD.length - 1 : i;
     };
-    const BLEND = 1.4;   // 換鏡頭時的過場秒數
-    function shotPose(seg, u) {
-      const s = SHOTS[seg[2]], k = clamp01(u / (seg[1] - seg[0]));
-      return { p: s.p0.clone().lerp(s.p1, k), t: s.t0.clone().lerp(s.t1, k) };
+
+    // ----- 鏡頭：換段時 1.4 秒平滑移動，之後緩慢推近 -----
+    const BLEND = 1.4, PUSH = 0.12;     // PUSH：每段結束時往目標推近 12% 的距離
+    function segPose(seg, u) {
+      const k = clamp01(u / seg.dur);
+      return { p: seg.cam.clone().lerp(seg.look, PUSH * k), t: seg.look.clone() };
     }
     function cameraAt(t) {
-      const i = segIndex(t), seg = SEGS[i];
-      const pose = shotPose(seg, t - seg[0]);
-      if (i > 0 && t - seg[0] < BLEND) {
-        const prev = SEGS[i - 1];
-        const from = shotPose(prev, prev[1] - prev[0]);
-        const k = smooth((t - seg[0]) / BLEND);
+      const i = segIndexAt(t), seg = STORYBOARD[i], u = t - seg.start;
+      const pose = segPose(seg, u);
+      if (i > 0 && u < BLEND) {
+        const prev = STORYBOARD[i - 1];
+        const from = segPose(prev, prev.dur);
+        const k = smooth(u / BLEND);
         pose.p = from.p.lerp(pose.p, k);
         pose.t = from.t.lerp(pose.t, k);
       }
       return pose;
     }
 
-    // ----- 試片：從盒子裡拿出來，飛進艙門 -----
+    // ----- 試片：沿弧線飛到艙門口，再推進機器 -----
     const restPos = strip.getWorldPosition(new THREE.Vector3());
     const restYaw = stripBox.rotation.y;
-    scene.attach(strip);          // 改掛在場景下，直接用世界座標控制
-    const STRIP_POSES = {
-      rest:   { p: restPos,             yaw: restYaw },
-      lift:   { p: V(0.2, 1.05, 2.55),  yaw: Math.PI / 2 },
-      mouth:  { p: V(0, 0.6, 1.95),     yaw: Math.PI / 2 },   // 停在艙門口
-      inside: { p: V(0, 0.6, 0.15),     yaw: Math.PI / 2 },   // 完全進到機器裡
-    };
-    const STRIP_KEYS = [
-      [0, 'rest'], [26.6, 'rest'], [27.6, 'lift'], [28.3, 'mouth'], [29.0, 'inside'],   // STEP 4 飛入
-      [53.4, 'inside'], [54.2, 'mouth'], [54.9, 'lift'], [55.7, 'rest'],                  // STEP 9 滑出
-    ];
-    function stripAt(t) {
-      let i = 0;
-      while (i < STRIP_KEYS.length - 1 && t >= STRIP_KEYS[i + 1][0]) i++;
-      const [ta, a] = STRIP_KEYS[i];
-      const [tb, b] = STRIP_KEYS[Math.min(i + 1, STRIP_KEYS.length - 1)];
-      const k = tb > ta ? smooth((t - ta) / (tb - ta)) : 0;
-      const A = STRIP_POSES[a], B = STRIP_POSES[b];
-      strip.position.copy(A.p).lerp(B.p, k);
-      strip.rotation.set(0, A.yaw + (B.yaw - A.yaw) * k, 0);
+    scene.attach(strip);                      // 改掛在場景下，直接用世界座標控制
+    const MOUTH = V(0, 0.6, 1.95), INSIDE = V(0, 0.6, 0.15);
+    const flyArc = new THREE.QuadraticBezierCurve3(restPos.clone(), V(0.15, 1.9, 2.7), MOUTH.clone());
+    function placeStrip(s) {                  // s：0 盒內、1 艙門口、2 機器內
+      if (s <= 1) {
+        strip.position.copy(flyArc.getPoint(s));
+        strip.rotation.set(-0.35 * Math.sin(s * Math.PI), restYaw + (Math.PI / 2 - restYaw) * s, 0);
+      } else {
+        strip.position.copy(MOUTH).lerp(INSIDE, s - 1);
+        strip.rotation.set(0, Math.PI / 2, 0);
+      }
     }
 
-    // ----- 電源鍵按下的漣漪 -----
+    // ----- 電源鍵漣漪 -----
     const pressRipple = new THREE.Mesh(
       new THREE.RingGeometry(0.1, 0.13, 40),
       new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, toneMapped: false })
@@ -950,7 +1017,7 @@
     pressRipple.position.y = 0.06;
     power.add(pressRipple);
 
-    // ----- 虛線連線與資料光點 -----
+    // ----- 虛線與資料光點 -----
     const phonePos = phoneScreen.getWorldPosition(new THREE.Vector3());
     const laptopPos = lapScreen.getWorldPosition(new THREE.Vector3());
     function makeDashes(a, b, lift, color, count = 28) {
@@ -1000,68 +1067,35 @@
         if (m.visible) m.position.copy(P.curve.getPoint(smooth(s)));
       });
     }
-    const loginLink = makeDashes(phonePos, scrC, 1.3, 0x2f6fe0);                 // STEP 3
-    const toPhone = makeDashes(scrC, phonePos, 2.2, 0x22b866);                   // STEP 8
+    const loginLink = makeDashes(phonePos, scrC, 1.3, 0x2f6fe0);
+    const toPhone = makeDashes(scrC, phonePos, 2.2, 0x22b866);
     const toLaptop = makeDashes(scrC, laptopPos, 2.2, 0x22b866);
     const dotsPhone = makeParticles(toPhone.curve, 0x35e08a);
     const dotsLaptop = makeParticles(toLaptop.curve, 0x35e08a);
 
-    // ----- 依時間 t 設定所有螢幕與物件 -----
-    function applyTimeline(t) {
-      // 分析儀螢幕
-      if (t < 11.3) setScreen('analyzer', 'off');
-      else if (t < 14.8) setScreen('analyzer', 'booting', q(clamp01((t - 11.3) / 3.3), 0.02));
-      else if (t < 18.6) setScreen('analyzer', 'home', t >= 17 && t < 17.8 ? { tap: q((t - 17) / 0.8, 0.05) } : undefined);
-      else if (t < 23.5) setScreen('analyzer', 'loginQR');
-      else if (t < 31) setScreen('analyzer', 'insertStrip');
-      else if (t < 34) setScreen('analyzer', 'scanning', q((t - 31) * 5, 0.1));
-      else if (t < 36) setScreen('analyzer', 'verified');
-      else if (t < 41) {
-        const u = clamp01((t - 36) / 4.6);   // 15 → 0（最後 0.4 秒停在 0）
-        setScreen('analyzer', 'countdown', { sec: Math.ceil(15 * (1 - u)), total: 15, frac: q(1 - u, 0.005), badge: '縮時示範' });
-      }
-      else if (t < 44.6) setScreen('analyzer', 'analyzing', Math.round(clamp01((t - 41) / 3.4) * 100));
-      else if (t < 46.2) setScreen('analyzer', 'result', 5.0);
-      else if (t < 55.5) setScreen('analyzer', 'saved', 5.0);
-      else setScreen('analyzer', 'home');
+    // ----- 把狀態套用到場景 -----
+    function applyState(S) {
+      setScreen('analyzer', ...S.analyzer);
+      setScreen('phone', ...S.phone);
+      setScreen('laptop', ...S.laptop);
+      M.green.emissiveIntensity = S.powerOn ? 1.2 : 0;
 
-      // 手機
-      if (t < 20.6) setScreen('phone', 'login');
-      else if (t < 23) setScreen('phone', 'camera');
-      else if (t < 48.7) setScreen('phone', 'loginSuccess');
-      else setScreen('phone', 'latestResult', 5.0);
-
-      // 筆電
-      if (t < 49.2) setScreen('laptop', 'overview', { today: 12 });
-      else setScreen('laptop', 'table', 5.0);
-
-      // STEP 1：按下電源鍵（往下壓再彈起）＋ 漣漪 ＋ 綠燈亮起時跳一下
-      powerBtn.position.y = 0.025 - 0.02 * (ramp(t, 10.8, 11.0) - ramp(t, 11.1, 11.4));
-      const rp = (t - 10.9) / 0.8;
-      pressRipple.visible = rp > 0 && rp < 1;
+      powerBtn.position.y = 0.025 - 0.02 * S.btnPress;
+      pressRipple.visible = S.ripple > 0 && S.ripple < 1;
       if (pressRipple.visible) {
-        pressRipple.scale.setScalar(1 + 2.2 * rp);
-        pressRipple.material.opacity = 0.9 * (1 - rp);
+        pressRipple.scale.setScalar(1 + 2.2 * S.ripple);
+        pressRipple.material.opacity = 0.9 * (1 - S.ripple);
       }
-      const pk = (t - 11.3) / 0.7;
-      ring.scale.setScalar(pk > 0 && pk < 1 ? 1 + 0.3 * Math.sin(pk * Math.PI) : 1);
+      ring.scale.setScalar(S.ringPulse > 0 && S.ringPulse < 1 ? 1 + 0.3 * Math.sin(S.ringPulse * Math.PI) : 1);
 
-      // 艙門：STEP 4 開→關，STEP 9 開→關
-      doorHinge.rotation.x = Math.PI * 0.5 *
-        (ramp(t, 25.4, 26.4) - ramp(t, 29.3, 30.2) + ramp(t, 52.3, 53.2) - ramp(t, 55.9, 56.7));
+      doorHinge.rotation.x = Math.PI * 0.5 * S.door;
+      placeStrip(S.strip);
 
-      // 試片
-      stripAt(t);
-
-      // STEP 3：手機 ↔ 分析儀 虛線連線
-      showDashes(loginLink, ramp(t, 21.2, 22.4), ramp(t, 21.1, 21.3) * (1 - ramp(t, 24.2, 24.8)));
-
-      // STEP 8：資料光點傳到手機與筆電
-      const syncOpacity = 0.55 * ramp(t, 46.4, 46.9) * (1 - ramp(t, 51.2, 51.8));
-      showDashes(toPhone, 1, syncOpacity);
-      showDashes(toLaptop, 1, syncOpacity);
-      showParticles(dotsPhone, t, 47.0);
-      showParticles(dotsLaptop, t, 47.3);
+      showDashes(loginLink, ...S.loginLink);
+      showDashes(toPhone, 1, S.sync);
+      showDashes(toLaptop, 1, S.sync);
+      showParticles(dotsPhone, S.syncT, 1.0);
+      showParticles(dotsLaptop, S.syncT, 1.3);
     }
 
     // ----- 字卡、設備標籤、淡入淡出 -----
@@ -1069,42 +1103,45 @@
     const titleCard = $('titleCard'), endCard = $('endCard'), fadeEl = $('fade');
     const stepEl = $('step'), stepNo = stepEl.querySelector('.no'), stepTitle = stepEl.querySelector('.title');
     const LABELS = [
-      [V(-0.3, 2.35, 0), 'QA-100 分析儀', 4.6],
-      [V(-3.5, 1.8, 0.0), '筆電・後台系統', 5.4],
-      [V(3.3, 1.85, 0.5), '手機・會員 App', 6.2],
-      [V(0.3, 0.45, 2.4), '檢測試片', 7.0],
-    ].map(([pos, text, at]) => {
+      [V(-0.3, 2.35, 0), 'QA-100 分析儀'],
+      [V(-3.5, 1.8, 0.0), '筆電・後台系統'],
+      [V(3.3, 1.85, 0.5), '手機・會員 App'],
+      [V(0.3, 0.45, 2.4), '檢測試片'],
+    ].map(([pos, text]) => {
       const el = document.createElement('div');
       el.className = 'label';
       el.textContent = text;
       $('labels').appendChild(el);
-      return { pos, el, at };
+      return { pos, el };
     });
     let shownSeg = -1;
     const tmpV = new THREE.Vector3();
-    function updateOverlay(t) {
-      titleCard.style.opacity = ramp(t, 0.4, 1.6) * (1 - ramp(t, 3.3, 3.9));
-      titleCard.style.transform = `translateY(${(1 - ramp(t, 0.4, 1.6)) * 1.5}cqw)`;
-      endCard.style.opacity = ramp(t, 58, 59.2);
-      fadeEl.style.opacity = Math.max(1 - ramp(t, 0, 1), 0.88 * ramp(t, 57.2, 58.6));
+    function updateOverlay(t, S) {
+      const introDur = STORYBOARD[0].dur;
+      titleCard.style.opacity = ramp(S.introT, 0.4, 1.6) * (1 - ramp(S.introT, introDur - 0.7, introDur - 0.1));
+      titleCard.style.transform = `translateY(${(1 - ramp(S.introT, 0.4, 1.6)) * 1.5}cqw)`;
+      endCard.style.opacity = ramp(S.outroT, 1.0, 2.2);
+      fadeEl.style.opacity = Math.max(1 - ramp(t, 0, 1), 0.88 * ramp(S.outroT, 0.2, 1.6));
 
-      const i = segIndex(t), seg = SEGS[i];
+      const i = segIndexAt(t), seg = STORYBOARD[i];
       if (i !== shownSeg) {
         shownSeg = i;
-        stepNo.textContent = seg[3] || '';
-        stepTitle.textContent = seg[4] || '';
+        stepNo.textContent = seg.tag || '';
+        stepTitle.textContent = seg.card || '';
       }
-      stepEl.style.opacity = seg[4] ? ramp(t, seg[0] + 0.3, seg[0] + 0.9) * (1 - ramp(t, seg[1] - 0.5, seg[1] - 0.1)) : 0;
+      const u = t - seg.start;
+      stepEl.style.opacity = seg.card ? ramp(u, 0.3, 0.9) * (1 - ramp(u, seg.dur - 0.5, seg.dur - 0.1)) : 0;
 
-      for (const L of LABELS) {
-        const o = ramp(t, L.at, L.at + 0.5) * (1 - ramp(t, 9.4, 9.9));
+      const [lu, ld] = S.labels;
+      LABELS.forEach((L, k) => {
+        const o = ramp(lu, 0.6 + k * 0.8, 1.1 + k * 0.8) * (1 - ramp(lu, ld - 0.6, ld - 0.1));
         L.el.style.opacity = o;
-        if (o <= 0) continue;
+        if (o <= 0) return;
         tmpV.copy(L.pos).project(camera);
         L.el.style.left = `${(tmpV.x * 0.5 + 0.5) * 100}%`;
         L.el.style.top = `${(-tmpV.y * 0.5 + 0.5) * 100}%`;
-        L.el.style.marginTop = `${(1 - o) * 1}cqw`;
-      }
+        L.el.style.marginTop = `${1 - o}cqw`;
+      });
     }
 
     // ---------- 滑鼠拖曳（暫停時可自由旋轉視角） ----------
@@ -1117,53 +1154,71 @@
     controls.maxPolarAngle = Math.PI / 2 - 0.05; // 不讓鏡頭鑽到地板下
     controls.enabled = false;
 
-    // ---------- 播放控制 ----------
-    let T = 0, playing = true, resumeFrom = null;
-    const playBtn = $('playBtn'), fill = $('fill'), timeEl = $('time'), bar = $('bar');
-    SEGS.slice(1).forEach(s => {
+    // ---------- 播放控制：播放／暫停、從頭、時間拖曳列 ----------
+    let T = 0, playing = true, scrubbing = false, resumeFrom = null;
+    const playBtn = $('playBtn'), restartBtn = $('restartBtn');
+    const fill = $('fill'), knob = $('knob'), timeEl = $('time'), bar = $('bar');
+    STORYBOARD.slice(1).forEach(s => {
       const tick = document.createElement('div');
       tick.className = 'tick';
-      tick.style.left = `${s[0] / DURATION * 100}%`;
+      tick.style.left = `${s.start / DURATION * 100}%`;
       bar.appendChild(tick);
     });
+    function setFree(free) {               // 暫停時才能用滑鼠轉視角
+      controls.enabled = free;
+      stage.classList.toggle('free', free);
+    }
     function play() {
       if (playing) return;
       playing = true;
-      resumeFrom = { p: camera.position.clone(), t: controls.target.clone(), at: T };  // 從目前視角平滑回到運鏡
-      controls.enabled = false;
-      stage.classList.remove('free');
+      resumeFrom = { p: camera.position.clone(), t: controls.target.clone(), at: T };   // 從目前視角平滑接回運鏡
+      setFree(false);
       playBtn.textContent = '❚❚';
     }
     function pause() {
       if (!playing) return;
       playing = false;
-      controls.enabled = true;       // 暫停時可以拖曳看四周
-      stage.classList.add('free');
+      setFree(true);
       playBtn.textContent = '▶';
     }
     function seek(t) {
       T = Math.min(Math.max(t, 0), DURATION - 0.001);
       resumeFrom = null;
-      if (!playing) applyTimeline(T);
     }
-    playBtn.addEventListener('click', () => (playing ? pause() : play()));
-    bar.addEventListener('click', e => {
+    function restart() { seek(0); play(); }
+    const toggle = () => (playing ? pause() : play());
+
+    playBtn.addEventListener('click', () => { toggle(); playBtn.blur(); });
+    restartBtn.addEventListener('click', () => { restart(); restartBtn.blur(); });
+
+    // 拖曳時間列：拖曳期間鏡頭跟著時間軸走，放開後回到原本的播放／暫停狀態
+    const seekFromPointer = e => {
       const r = bar.getBoundingClientRect();
       seek((e.clientX - r.left) / r.width * DURATION);
+    };
+    bar.addEventListener('pointerdown', e => {
+      scrubbing = true;
+      setFree(false);
+      bar.setPointerCapture(e.pointerId);
+      seekFromPointer(e);
     });
+    bar.addEventListener('pointermove', e => { if (scrubbing) seekFromPointer(e); });
+    const endScrub = () => {
+      if (!scrubbing) return;
+      scrubbing = false;
+      if (!playing) setFree(true);
+    };
+    bar.addEventListener('pointerup', endScrub);
+    bar.addEventListener('pointercancel', endScrub);
+
     window.addEventListener('keydown', e => {
-      if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); }
-    });
-    let hudTimer;
-    stage.addEventListener('mousemove', () => {
-      stage.classList.add('show-hud');
-      clearTimeout(hudTimer);
-      hudTimer = setTimeout(() => stage.classList.remove('show-hud'), 2500);
+      if (e.code === 'Space') { e.preventDefault(); toggle(); }
+      if (e.code === 'KeyH') stage.classList.toggle('hide-hud');
     });
 
-    // 開放到主控台：player.seek(36)、player.pause()、setScreen('analyzer', 'result', 7.2)
-    const player = { play, pause, seek, get time() { return T; }, DURATION };
-    Object.assign(window, { setScreen, screens, player });
+    // 開放到主控台：player.seek(36)、player.restart()、STORYBOARD[3].dur = 8（改長度後重新整理即可）
+    const player = { play, pause, seek, restart, get time() { return T; }, get duration() { return DURATION; } };
+    Object.assign(window, { setScreen, screens, player, STORYBOARD });
 
     // ---------- 尺寸調整 ----------
     function resize() {
@@ -1178,37 +1233,39 @@
 
     // ---------- 動畫迴圈 ----------
     const clock = new THREE.Clock();
-    const camTarget = new THREE.Vector3();
+    const fmtTime = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
     renderer.setAnimationLoop(() => {
       const dt = Math.min(clock.getDelta(), 0.1);
-      if (playing) {
+      if (playing && !scrubbing) {
         T += dt;
-        if (T >= DURATION) T -= DURATION;     // 播完自動重播
+        if (T >= DURATION) T -= DURATION;       // 播完自動從頭
       }
-      applyTimeline(T);
 
-      if (playing) {
+      // 每一幀都從初始狀態重算
+      const S = stateAt(T);
+      applyState(S);
+
+      if (playing || scrubbing) {
         const pose = cameraAt(T);
-        if (resumeFrom) {                     // 暫停後恢復播放：用 1 秒滑回運鏡位置
+        if (resumeFrom && !scrubbing) {         // 暫停後恢復播放：1 秒滑回運鏡
           const k = smooth((T - resumeFrom.at) / 1.0);
           pose.p = resumeFrom.p.clone().lerp(pose.p, k);
           pose.t = resumeFrom.t.clone().lerp(pose.t, k);
           if (k >= 1 || T < resumeFrom.at) resumeFrom = null;
         }
         camera.position.copy(pose.p);
-        camTarget.copy(pose.t);
-        camera.lookAt(camTarget);
-        controls.target.copy(camTarget);      // 暫停時從目前畫面接手拖曳
+        camera.lookAt(pose.t);
+        controls.target.copy(pose.t);           // 暫停時從目前畫面接手拖曳
       } else {
         controls.update();
       }
 
-      updateOverlay(T);
-      const shown = T.toFixed(1);
-      if (timeEl.textContent !== `${shown} / ${DURATION}s`) {
-        timeEl.textContent = `${shown} / ${DURATION}s`;
-        fill.style.width = `${T / DURATION * 100}%`;
-      }
+      updateOverlay(T, S);
+      const label = `${fmtTime(T)} / ${fmtTime(DURATION)}`;
+      if (timeEl.textContent !== label) timeEl.textContent = label;
+      const pct = `${T / DURATION * 100}%`;
+      fill.style.width = pct;
+      knob.style.left = pct;
       renderer.render(scene, camera);
     });
   </script>
