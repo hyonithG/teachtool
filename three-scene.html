@@ -300,6 +300,483 @@
     // 方便之後做動畫或在主控台測試：window.doorHinge.rotation.x = Math.PI / 2
     Object.assign(window, { scene, doorHinge, analyzer });
 
+    // =====================================================
+    //  螢幕介面：Canvas 2D 畫好後當成 CanvasTexture 貼到 3D 螢幕
+    // =====================================================
+
+    const FONT = '"Noto Sans TC","PingFang TC","Microsoft JhengHei","WenQuanYi Zen Hei",system-ui,sans-serif';
+    const C = {
+      ink: '#1d2733', sub: '#6b7785', line: '#e3e8ee', bg: '#f3f6f9', white: '#ffffff',
+      green: '#22b866', greenSoft: '#e6f7ee', blue: '#2f6fe0', blueSoft: '#e8f0fd',
+      navy: '#16213a', amber: '#f2a33a', red: '#e5484d',
+    };
+
+    // ----- 繪圖小工具 -----
+    function txt(c, s, x, y, px, o = {}) {
+      c.font = `${o.weight || 500} ${px}px ${FONT}`;
+      c.fillStyle = o.color || C.ink;
+      c.textAlign = o.align || 'center';
+      c.textBaseline = o.baseline || 'middle';
+      c.fillText(String(s), x, y);
+      return c.measureText(String(s)).width;
+    }
+    function rr(c, x, y, w, h, r, fill, stroke, lw = 2) {
+      c.beginPath();
+      c.roundRect(x, y, w, h, r);
+      if (fill) { c.fillStyle = fill; c.fill(); }
+      if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw; c.stroke(); }
+    }
+    function circle(c, x, y, r, fill, stroke, lw = 2) {
+      c.beginPath();
+      c.arc(x, y, r, 0, Math.PI * 2);
+      if (fill) { c.fillStyle = fill; c.fill(); }
+      if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw; c.stroke(); }
+    }
+    function checkIcon(c, x, y, r, color) {
+      circle(c, x, y, r, color);
+      c.beginPath();
+      c.moveTo(x - r * 0.42, y + r * 0.02);
+      c.lineTo(x - r * 0.12, y + r * 0.32);
+      c.lineTo(x + r * 0.45, y - r * 0.3);
+      c.strokeStyle = '#fff'; c.lineWidth = r * 0.15;
+      c.lineCap = 'round'; c.lineJoin = 'round';
+      c.stroke();
+    }
+    function arcRing(c, x, y, r, frac, color, lw) {
+      c.lineCap = 'round';
+      c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2);
+      c.strokeStyle = C.line; c.lineWidth = lw; c.stroke();
+      if (frac > 0) {
+        c.beginPath();
+        c.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(frac, 1));
+        c.strokeStyle = color; c.lineWidth = lw; c.stroke();
+      }
+    }
+    // 示意用 QR Code 圖樣（固定亂數，不是真的可掃描 QR）
+    function qr(c, x, y, size, seed = 7) {
+      const N = 25, s = size / N;
+      let r = seed;
+      const rand = () => (r = (r * 1103515245 + 12345) % 2147483648) / 2147483648;
+      c.fillStyle = '#fff'; c.fillRect(x - s * 2, y - s * 2, size + s * 4, size + s * 4);
+      c.fillStyle = '#111';
+      const inFinder = (i, j) => (i < 8 && j < 8) || (i >= N - 8 && j < 8) || (i < 8 && j >= N - 8);
+      for (let j = 0; j < N; j++)
+        for (let i = 0; i < N; i++)
+          if (!inFinder(i, j) && rand() > 0.52) c.fillRect(x + i * s, y + j * s, s + 0.5, s + 0.5);
+      [[0, 0], [N - 7, 0], [0, N - 7]].forEach(([i, j]) => {
+        c.fillStyle = '#111'; c.fillRect(x + i * s, y + j * s, 7 * s, 7 * s);
+        c.fillStyle = '#fff'; c.fillRect(x + (i + 1) * s, y + (j + 1) * s, 5 * s, 5 * s);
+        c.fillStyle = '#111'; c.fillRect(x + (i + 2) * s, y + (j + 2) * s, 3 * s, 3 * s);
+      });
+    }
+    const nowHM = () => new Date().toTimeString().slice(0, 5);
+    const fmt = v => Number(v).toFixed(1);
+
+    // ----- 分析儀（1024 × 656） -----
+    function aBase(c, W, H, title) {
+      c.fillStyle = C.bg; c.fillRect(0, 0, W, H);
+      c.fillStyle = C.white; c.fillRect(0, 0, W, 72);
+      c.fillStyle = C.line; c.fillRect(0, 72, W, 2);
+      txt(c, title, 32, 37, 30, { align: 'left', weight: 700 });
+      txt(c, nowHM(), W - 32, 37, 26, { align: 'right', color: C.sub });
+      circle(c, W - 130, 37, 8, C.green);
+      txt(c, 'AX-01', W - 150, 37, 22, { align: 'right', color: C.sub });
+    }
+    const analyzerUI = {
+      off(c, W, H) { c.fillStyle = '#000'; c.fillRect(0, 0, W, H); },
+
+      booting(c, W, H, p = 0) {
+        c.fillStyle = '#0f1722'; c.fillRect(0, 0, W, H);
+        circle(c, W / 2, H / 2 - 90, 60, C.green);
+        c.fillStyle = '#fff';
+        c.fillRect(W / 2 - 10, H / 2 - 125, 20, 70);
+        c.fillRect(W / 2 - 35, H / 2 - 100, 70, 20);
+        txt(c, '檢測分析儀', W / 2, H / 2 + 20, 44, { color: '#fff', weight: 700 });
+        rr(c, W / 2 - 220, H / 2 + 90, 440, 14, 7, '#26324a');
+        if (p > 0) rr(c, W / 2 - 220, H / 2 + 90, 440 * Math.min(p, 1), 14, 7, C.green);
+        txt(c, `系統啟動中… ${Math.round(p * 100)}%`, W / 2, H / 2 + 145, 26, { color: '#9aa6bd' });
+      },
+
+      home(c, W, H) {
+        aBase(c, W, H, '首頁');
+        c.save();
+        c.shadowColor = 'rgba(34,184,102,0.45)'; c.shadowBlur = 40; c.shadowOffsetY = 12;
+        rr(c, W / 2 - 280, 130, 560, 260, 40, C.green);
+        c.restore();
+        c.beginPath();                                   // 播放三角形
+        c.moveTo(W / 2 - 190, 215); c.lineTo(W / 2 - 190, 305); c.lineTo(W / 2 - 115, 260);
+        c.closePath(); c.fillStyle = '#fff'; c.fill();
+        txt(c, '開始檢測', W / 2 + 50, 260, 72, { color: '#fff', weight: 800 });
+        rr(c, W / 2 - 280, 430, 270, 100, 24, C.white, C.line);
+        rr(c, W / 2 + 10, 430, 270, 100, 24, C.white, C.line);
+        txt(c, '歷史紀錄', W / 2 - 145, 480, 32, { weight: 600 });
+        txt(c, '設定', W / 2 + 145, 480, 32, { weight: 600 });
+        txt(c, '請先插入試片或登入後開始', W / 2, 590, 24, { color: C.sub });
+      },
+
+      loginQR(c, W, H) {
+        aBase(c, W, H, '登入');
+        rr(c, 70, 110, 400, 400, 28, C.white, C.line);
+        qr(c, 120, 160, 300);
+        txt(c, '請使用手機 App', 520, 220, 46, { align: 'left', weight: 800 });
+        txt(c, '掃描 QR Code 登入', 520, 285, 46, { align: 'left', weight: 800 });
+        ['1. 開啟「檢測助手」App', '2. 點選「掃描裝置 QR Code」', '3. 將鏡頭對準左側圖案'].forEach((s, i) =>
+          txt(c, s, 520, 370 + i * 46, 26, { align: 'left', color: C.sub }));
+        txt(c, '等待手機連線…', 270, 580, 26, { color: C.blue, weight: 600 });
+      },
+
+      insertStrip(c, W, H) {
+        aBase(c, W, H, '準備檢測');
+        txt(c, '請插入試片', W / 2, 135, 56, { weight: 800 });
+        txt(c, '打開前方艙門，將試片平穩推入到底', W / 2, 195, 26, { color: C.sub });
+        // 試片圖示
+        rr(c, W / 2 - 60, 240, 120, 230, 12, C.white, '#c9d1da', 3);
+        rr(c, W / 2 - 60, 240, 26, 230, [12, 0, 0, 12], C.blue);
+        // 箭頭
+        c.beginPath();
+        c.moveTo(W / 2 - 34, 492); c.lineTo(W / 2 + 34, 492); c.lineTo(W / 2, 530);
+        c.closePath(); c.fillStyle = C.green; c.fill();
+        // 插槽
+        rr(c, W / 2 - 200, 545, 400, 42, 14, '#2a2e34');
+        rr(c, W / 2 - 150, 560, 300, 12, 6, '#0d0f12');
+      },
+
+      scanning(c, W, H) {
+        aBase(c, W, H, '讀取試片');
+        const x = W / 2 - 320, y = 190, w = 640, h = 150;
+        rr(c, x, y, w, h, 16, C.white, '#c9d1da', 3);
+        rr(c, x, y, w, 32, [16, 16, 0, 0], C.blue);
+        c.fillStyle = '#d9dee4';
+        for (let i = 0; i < 6; i++) c.fillRect(x + 80 + i * 90, y + 70, 40, 50);
+        const sx = x + w * 0.62;                       // 掃描光線
+        const g = c.createLinearGradient(sx - 60, 0, sx + 6, 0);
+        g.addColorStop(0, 'rgba(34,184,102,0)'); g.addColorStop(1, 'rgba(34,184,102,0.45)');
+        c.fillStyle = g; c.fillRect(sx - 60, y - 20, 66, h + 40);
+        c.fillStyle = C.green; c.fillRect(sx, y - 20, 6, h + 40);
+        txt(c, '正在讀取試片資訊…', W / 2, 440, 44, { weight: 700 });
+        txt(c, '請勿移動試片', W / 2, 500, 26, { color: C.sub });
+      },
+
+      verified(c, W, H) {
+        aBase(c, W, H, '讀取試片');
+        checkIcon(c, W / 2, 250, 100, C.green);
+        txt(c, '試片驗證成功', W / 2, 420, 56, { weight: 800 });
+        txt(c, '批號 LOT-24A118 · 有效期限 2027/03', W / 2, 485, 26, { color: C.sub });
+      },
+
+      countdown(c, W, H, sec = 5) {
+        aBase(c, W, H, '反應中');
+        arcRing(c, W / 2, 285, 140, sec / 5, C.green, 22);
+        txt(c, sec, W / 2, 280, 130, { weight: 800 });
+        txt(c, '秒後開始分析', W / 2, 500, 40, { weight: 700 });
+        txt(c, '反應進行中，請勿開啟艙門', W / 2, 555, 26, { color: C.sub });
+      },
+
+      analyzing(c, W, H, pct = 0) {
+        aBase(c, W, H, '分析中');
+        arcRing(c, W / 2, 285, 140, pct / 100, C.blue, 22);
+        txt(c, `${Math.round(pct)}%`, W / 2, 285, 96, { weight: 800 });
+        txt(c, '正在分析檢體，請稍候', W / 2, 500, 40, { weight: 700 });
+        rr(c, W / 2 - 260, 545, 520, 12, 6, C.line);
+        if (pct > 0) rr(c, W / 2 - 260, 545, 520 * pct / 100, 12, 6, C.blue);
+      },
+
+      result(c, W, H, v = 5.0) {
+        aBase(c, W, H, '檢測結果');
+        rr(c, 60, 100, W - 120, 370, 28, C.white, C.line);
+        txt(c, '測試項目 A', W / 2, 150, 28, { color: C.sub, weight: 600 });
+        const big = fmt(v);
+        c.font = `800 150px ${FONT}`;
+        const bw = c.measureText(big).width;
+        txt(c, big, W / 2 - 60, 265, 150, { weight: 800 });
+        txt(c, 'ng/mL', W / 2 - 60 + bw / 2 + 16, 295, 40, { align: 'left', color: C.sub, weight: 600 });
+        // 數值刻度條（0–20）
+        const bx = 160, by = 390, bw2 = W - 320;
+        const g = c.createLinearGradient(bx, 0, bx + bw2, 0);
+        g.addColorStop(0, '#8fdcb2'); g.addColorStop(0.5, '#f6d58a'); g.addColorStop(1, '#f19a9c');
+        rr(c, bx, by, bw2, 14, 7, g);
+        const mx = bx + bw2 * Math.min(Number(v) / 20, 1);
+        circle(c, mx, by + 7, 15, C.white, C.ink, 4);
+        txt(c, '0', bx, by + 45, 22, { color: C.sub });
+        txt(c, '20', bx + bw2, by + 45, 22, { color: C.sub });
+        rr(c, 60, 505, 440, 100, 24, C.green);
+        txt(c, '儲存結果', 280, 555, 36, { color: '#fff', weight: 700 });
+        rr(c, 524, 505, 440, 100, 24, C.white, C.line, 3);
+        txt(c, '重新檢測', 744, 555, 36, { weight: 700 });
+      },
+
+      saved(c, W, H, v) {
+        aBase(c, W, H, '檢測結果');
+        checkIcon(c, W / 2, 240, 100, C.blue);
+        txt(c, '結果已儲存', W / 2, 410, 56, { weight: 800 });
+        txt(c, '已同步至雲端與手機 App', W / 2, 475, 28, { color: C.sub });
+        if (v != null) txt(c, `測試項目 A · ${fmt(v)} ng/mL · ${nowHM()}`, W / 2, 540, 26, { color: C.sub });
+      },
+    };
+
+    // ----- 手機 App（540 × 1108） -----
+    function pStatus(c, W, dark = false) {
+      const col = dark ? '#fff' : C.ink;
+      txt(c, nowHM(), 36, 34, 22, { align: 'left', color: col, weight: 700 });
+      rr(c, W - 76, 24, 40, 20, 5, null, col, 2);
+      rr(c, W - 72, 28, 26, 12, 2, col);
+    }
+    const phoneUI = {
+      login(c, W, H) {
+        c.fillStyle = C.white; c.fillRect(0, 0, W, H);
+        pStatus(c, W);
+        rr(c, W / 2 - 64, 160, 128, 128, 32, C.blue);
+        c.fillStyle = '#fff';
+        c.fillRect(W / 2 - 12, 190, 24, 68); c.fillRect(W / 2 - 34, 212, 68, 24);
+        txt(c, '檢測助手', W / 2, 345, 44, { weight: 800 });
+        txt(c, '登入以同步你的檢測結果', W / 2, 395, 24, { color: C.sub });
+        rr(c, 50, 460, W - 100, 76, 18, C.bg, C.line);
+        txt(c, 'user@example.com', 80, 498, 24, { align: 'left', color: C.sub });
+        rr(c, 50, 556, W - 100, 76, 18, C.bg, C.line);
+        txt(c, '••••••••', 80, 598, 28, { align: 'left', color: C.sub });
+        rr(c, 50, 670, W - 100, 84, 20, C.blue);
+        txt(c, '登入', W / 2, 712, 32, { color: '#fff', weight: 700 });
+        c.fillStyle = C.line; c.fillRect(50, 815, W - 100, 2);
+        c.fillStyle = C.white; c.fillRect(W / 2 - 30, 805, 60, 22);
+        txt(c, '或', W / 2, 816, 22, { color: C.sub });
+        rr(c, 50, 860, W - 100, 84, 20, C.white, C.blue, 3);
+        txt(c, '掃描裝置 QR Code', W / 2, 902, 30, { color: C.blue, weight: 700 });
+      },
+
+      camera(c, W, H) {
+        c.fillStyle = '#15181d'; c.fillRect(0, 0, W, H);
+        pStatus(c, W, true);
+        txt(c, '掃描 QR Code', W / 2, 140, 38, { color: '#fff', weight: 700 });
+        const s = 380, x = W / 2 - s / 2, y = 300;
+        c.fillStyle = '#2a2f37'; c.fillRect(x, y, s, s);
+        qr(c, x + 60, y + 60, s - 120);
+        c.strokeStyle = C.green; c.lineWidth = 10; c.lineCap = 'round';
+        const L = 60;
+        [[x, y, 1, 1], [x + s, y, -1, 1], [x, y + s, 1, -1], [x + s, y + s, -1, -1]].forEach(([cx, cy, dx, dy]) => {
+          c.beginPath(); c.moveTo(cx, cy + dy * L); c.lineTo(cx, cy); c.lineTo(cx + dx * L, cy); c.stroke();
+        });
+        c.fillStyle = 'rgba(34,184,102,0.85)'; c.fillRect(x + 16, y + s * 0.58, s - 32, 5);
+        txt(c, '將分析儀畫面上的 QR Code', W / 2, 780, 28, { color: '#d6dbe2' });
+        txt(c, '對準框內即可自動登入', W / 2, 822, 28, { color: '#d6dbe2' });
+        circle(c, W / 2, 975, 46, null, '#fff', 4);
+        txt(c, '✕', W / 2, 977, 34, { color: '#fff' });
+      },
+
+      loginSuccess(c, W, H) {
+        c.fillStyle = C.white; c.fillRect(0, 0, W, H);
+        pStatus(c, W);
+        checkIcon(c, W / 2, 420, 110, C.green);
+        txt(c, '登入成功', W / 2, 610, 52, { weight: 800 });
+        txt(c, '已連線至分析儀 AX-01', W / 2, 670, 28, { color: C.sub });
+        rr(c, 50, 920, W - 100, 84, 20, C.blue);
+        txt(c, '繼續', W / 2, 962, 32, { color: '#fff', weight: 700 });
+      },
+
+      latestResult(c, W, H, v = 5.0) {
+        c.fillStyle = C.bg; c.fillRect(0, 0, W, H);
+        c.fillStyle = C.blue; c.fillRect(0, 0, W, 230);
+        pStatus(c, W, true);
+        txt(c, '最新檢測結果', 40, 120, 40, { align: 'left', color: '#fff', weight: 800 });
+        rr(c, 30, 170, W - 60, 400, 28, C.white);
+        txt(c, '測試項目 A', W / 2, 225, 26, { color: C.sub, weight: 600 });
+        txt(c, fmt(v), W / 2, 335, 140, { weight: 800 });
+        txt(c, 'ng/mL', W / 2, 430, 32, { color: C.sub, weight: 600 });
+        rr(c, W / 2 - 80, 470, 160, 44, 22, C.greenSoft);
+        txt(c, '已完成', W / 2, 493, 24, { color: C.green, weight: 700 });
+        txt(c, `今天 ${nowHM()} · AX-01`, W / 2, 545, 22, { color: C.sub });
+        // 近期趨勢
+        rr(c, 30, 600, W - 60, 380, 28, C.white);
+        txt(c, '近期趨勢', 60, 645, 28, { align: 'left', weight: 700 });
+        const data = [4.2, 4.8, 4.5, 5.3, 4.9, Number(v)];
+        const gx = 70, gy = 700, gw = W - 140, gh = 220;
+        c.fillStyle = C.line;
+        for (let i = 0; i <= 3; i++) c.fillRect(gx, gy + gh * i / 3, gw, 2);
+        const pt = (d, i) => [gx + gw * i / (data.length - 1), gy + gh - (d - 3) / 3 * gh];
+        c.beginPath();
+        data.forEach((d, i) => { const [px, py] = pt(d, i); i ? c.lineTo(px, py) : c.moveTo(px, py); });
+        c.strokeStyle = C.blue; c.lineWidth = 5; c.lineJoin = 'round'; c.stroke();
+        data.forEach((d, i) => { const [px, py] = pt(d, i); circle(c, px, py, i === data.length - 1 ? 11 : 7, i === data.length - 1 ? C.green : C.blue); });
+        // 底部導覽列
+        c.fillStyle = C.white; c.fillRect(0, H - 96, W, 96);
+        ['首頁', '紀錄', '我的'].forEach((s, i) => {
+          const x = W * (i + 0.5) / 3, active = i === 1;
+          circle(c, x, H - 64, 12, active ? C.blue : '#c3cad3');
+          txt(c, s, x, H - 30, 20, { color: active ? C.blue : C.sub, weight: 600 });
+        });
+      },
+    };
+
+    // ----- 筆電後台（1280 × 780） -----
+    function lBase(c, W, H, active, title) {
+      c.fillStyle = '#f4f6f9'; c.fillRect(0, 0, W, H);
+      c.fillStyle = C.navy; c.fillRect(0, 0, 230, H);
+      rr(c, 28, 30, 40, 40, 10, C.green);
+      txt(c, '檢測後台', 82, 51, 26, { align: 'left', color: '#fff', weight: 800 });
+      ['總覽', '檢測結果', '裝置管理', '使用者'].forEach((s, i) => {
+        const y = 130 + i * 62;
+        if (i === active) rr(c, 16, y - 24, 198, 50, 12, '#2c3b5e');
+        txt(c, s, 44, y + 1, 24, { align: 'left', color: i === active ? '#fff' : '#9aa6bd', weight: 600 });
+      });
+      c.fillStyle = C.white; c.fillRect(230, 0, W - 230, 76);
+      c.fillStyle = C.line; c.fillRect(230, 76, W - 230, 2);
+      txt(c, title, 262, 39, 30, { align: 'left', weight: 800 });
+      circle(c, W - 50, 39, 20, '#c3cad3');
+      txt(c, '管理員', W - 82, 39, 22, { align: 'right', color: C.sub });
+    }
+    const laptopUI = {
+      overview(c, W, H, st = {}) {
+        const s = { today: 12, week: 86, devices: 4, pending: 2, ...st };
+        lBase(c, W, H, 0, '總覽');
+        const cards = [
+          ['今日檢測', s.today, '件', C.green],
+          ['本週檢測', s.week, '件', C.blue],
+          ['連線裝置', s.devices, '台', '#8b5cf6'],
+          ['待複核', s.pending, '件', C.amber],
+        ];
+        const x0 = 260, gap = 20, cw = (W - x0 - 30 - gap * 3) / 4;
+        cards.forEach(([label, val, unit, col], i) => {
+          const x = x0 + i * (cw + gap);
+          rr(c, x, 104, cw, 150, 18, C.white);
+          rr(c, x, 104, 8, 150, [18, 0, 0, 18], col);
+          txt(c, label, x + 32, 142, 22, { align: 'left', color: C.sub, weight: 600 });
+          const w = txt(c, val, x + 32, 205, 60, { align: 'left', weight: 800 });
+          txt(c, unit, x + 40 + w, 218, 22, { align: 'left', color: C.sub });
+        });
+        // 近 7 日長條圖
+        rr(c, 260, 280, W - 290, 470, 18, C.white);
+        txt(c, '近 7 日檢測數', 292, 322, 24, { align: 'left', weight: 700 });
+        const days = ['11/09', '11/10', '11/11', '11/12', '11/13', '11/14', '今日'];
+        const vals = [9, 14, 11, 16, 12, 8, s.today];
+        const gx = 320, gy = 380, gw = W - 400, gh = 300, bw = gw / 7 * 0.5;
+        c.fillStyle = C.line;
+        for (let i = 0; i <= 4; i++) c.fillRect(gx - 20, gy + gh * i / 4, gw + 20, 2);
+        vals.forEach((v, i) => {
+          const h = gh * v / 20, x = gx + gw * (i + 0.5) / 7 - bw / 2;
+          rr(c, x, gy + gh - h, bw, h, [8, 8, 0, 0], i === 6 ? C.green : '#b9c8de');
+          txt(c, v, x + bw / 2, gy + gh - h - 18, 20, { color: C.sub, weight: 600 });
+          txt(c, days[i], x + bw / 2, gy + gh + 28, 20, { color: C.sub });
+        });
+      },
+
+      table(c, W, H, v = 5.0) {
+        lBase(c, W, H, 1, '檢測結果');
+        rr(c, 260, 100, W - 290, 650, 18, C.white);
+        const cols = [['時間', 300], ['檢體編號', 470], ['裝置', 700], ['項目', 820], ['結果 (ng/mL)', 990], ['狀態', 1140]];
+        const rows = [
+          ['11/15 10:32', 'S-1115-013', 'AX-01', '測試項目 A', v, '已完成', true],
+          ['11/15 09:58', 'S-1115-012', 'AX-02', '測試項目 A', 4.6, '已完成'],
+          ['11/15 09:21', 'S-1115-011', 'AX-01', '測試項目 B', 12.3, '待複核'],
+          ['11/15 08:47', 'S-1115-010', 'AX-03', '測試項目 A', 3.9, '已完成'],
+          ['11/14 17:05', 'S-1114-022', 'AX-02', '測試項目 A', 5.4, '已完成'],
+          ['11/14 16:40', 'S-1114-021', 'AX-01', '測試項目 B', 8.1, '已完成'],
+          ['11/14 15:12', 'S-1114-020', 'AX-04', '測試項目 A', 4.4, '已完成'],
+          ['11/14 14:33', 'S-1114-019', 'AX-03', '測試項目 A', 6.0, '待複核'],
+        ];
+        const top = 130, rh = 70;
+        cols.forEach(([s, x]) => txt(c, s, x, top + 20, 20, { align: 'left', color: C.sub, weight: 700 }));
+        c.fillStyle = C.line; c.fillRect(280, top + 44, W - 330, 2);
+        rows.forEach((r, i) => {
+          const y = top + 50 + i * rh, cy = y + rh / 2;
+          if (r[6]) {
+            rr(c, 276, y + 4, W - 322, rh - 8, 12, C.greenSoft);
+            rr(c, 276, y + 4, 6, rh - 8, 3, C.green);
+          } else {
+            c.fillStyle = '#eef1f4'; c.fillRect(280, y + rh - 1, W - 330, 1);
+          }
+          r.slice(0, 5).forEach((val, k) =>
+            txt(c, k === 4 ? fmt(val) : val, cols[k][1], cy, 22, { align: 'left', weight: r[6] ? 700 : 500 }));
+          const done = r[5] === '已完成';
+          rr(c, cols[5][1], cy - 17, 88, 34, 17, r[6] ? C.white : done ? C.greenSoft : '#fdf1df');
+          txt(c, r[5], cols[5][1] + 44, cy, 18, { color: done ? C.green : C.amber, weight: 700 });
+          if (r[6]) {                                   // NEW 標籤
+            rr(c, 1048, cy - 15, 58, 30, 8, C.red);
+            txt(c, 'NEW', 1077, cy + 1, 16, { color: '#fff', weight: 800 });
+          }
+        });
+      },
+    };
+
+    // ----- 螢幕註冊與 setScreen -----
+    const screens = {};
+    function makeScreen(name, mesh, faceIndex, w, h, ui) {
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      // 只有正面那一面貼介面，其餘面維持黑色；螢幕自己發光所以用 Basic 材質
+      const lit = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+      mesh.material = Array.from({ length: 6 }, (_, i) => (i === faceIndex ? lit : M.screen));
+      screens[name] = { canvas, ctx: canvas.getContext('2d'), tex, ui, state: null, value: undefined, key: null };
+    }
+    // BoxGeometry 的面順序：0 +x, 1 -x, 2 +y, 3 -y, 4 +z, 5 -z
+    makeScreen('analyzer', touchScreen, 2, 1024, 656, analyzerUI);
+    makeScreen('laptop', lapScreen, 4, 1280, 780, laptopUI);
+    makeScreen('phone', phoneScreen, 4, 540, 1108, phoneUI);
+
+    /**
+     * 切換螢幕畫面。狀態與數值都沒變時不重畫，回傳 false。
+     *  analyzer：off, booting(0~1), home, loginQR, insertStrip, scanning, verified,
+     *            countdown(秒), analyzing(0~100), result(數值), saved(數值)
+     *  phone   ：login, camera, loginSuccess, latestResult(數值)
+     *  laptop  ：overview({today, week, devices, pending}), table(最新數值)
+     */
+    function setScreen(name, state, value) {
+      const s = screens[name];
+      if (!s) { console.warn(`setScreen: 沒有螢幕「${name}」`); return false; }
+      const draw = s.ui[state];
+      if (!draw) { console.warn(`setScreen: ${name} 沒有狀態「${state}」`); return false; }
+      const key = state + '|' + JSON.stringify(value ?? null);
+      if (key === s.key) return false;
+      s.key = key; s.state = state; s.value = value;
+      const c = s.ctx;
+      c.save();
+      c.clearRect(0, 0, s.canvas.width, s.canvas.height);
+      draw(c, s.canvas.width, s.canvas.height, value ?? undefined);
+      c.restore();
+      s.tex.needsUpdate = true;
+      if (name === 'analyzer') M.green.emissiveIntensity = state === 'off' ? 0 : 1.2;  // 電源燈跟著開關
+      return true;
+    }
+
+    // ----- 自動輪播示範 -----
+    const demo = [];
+    const step = (dur, a, p, l) => demo.push({ dur, a, p, l });
+    step(1.5, ['off'], ['login'], ['overview', { today: 12 }]);
+    for (let i = 0; i <= 10; i++) step(0.2, ['booting', i / 10]);
+    step(2.0, ['home']);
+    step(2.0, ['loginQR'], ['camera']);
+    step(1.8, null, ['loginSuccess']);
+    step(2.2, ['insertStrip']);
+    step(2.0, ['scanning']);
+    step(1.8, ['verified']);
+    for (let s = 5; s >= 1; s--) step(1.0, ['countdown', s]);
+    for (let p = 0; p <= 100; p += 5) step(0.15, ['analyzing', p]);
+    step(2.5, ['result', 5.0]);
+    step(3.0, ['saved', 5.0], ['latestResult', 5.0], ['table', 5.0]);
+    step(3.0, null, null, ['overview', { today: 13, week: 87 }]);
+
+    let demoOn = true, demoIdx = -1, demoT = 0;
+    function applyStep(st) {
+      if (st.a) setScreen('analyzer', ...st.a);
+      if (st.p) setScreen('phone', ...st.p);
+      if (st.l) setScreen('laptop', ...st.l);
+    }
+    function updateDemo(dt) {
+      if (!demoOn) return;
+      demoT -= dt;
+      while (demoT <= 0) {
+        demoIdx = (demoIdx + 1) % demo.length;
+        demoT += demo[demoIdx].dur;
+        applyStep(demo[demoIdx]);
+      }
+    }
+    const startDemo = () => { demoOn = true; };
+    const stopDemo = () => { demoOn = false; };
+
+    // 開放到主控台：setScreen('analyzer', 'result', 7.2)、stopDemo()、startDemo()
+    Object.assign(window, { setScreen, startDemo, stopDemo, screens });
+
     // ---------- 滑鼠拖曳 + 自動旋轉 ----------
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, 0.8, 0.6);
@@ -325,7 +802,10 @@
     resize();
 
     // ---------- 動畫迴圈 ----------
+    const clock = new THREE.Clock();
     renderer.setAnimationLoop(() => {
+      const dt = Math.min(clock.getDelta(), 0.1);
+      updateDemo(dt);
       controls.update();
       renderer.render(scene, camera);
     });
