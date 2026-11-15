@@ -63,11 +63,11 @@
     const BG = 0xb8c6d4;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(BG);
-    scene.fog = new THREE.Fog(BG, 12, 45);
+    scene.fog = new THREE.Fog(BG, 16, 50);
 
     // ---------- Camera（固定 16:9） ----------
     const camera = new THREE.PerspectiveCamera(40, 16 / 9, 0.1, 200);
-    camera.position.set(6, 4.5, 8);
+    camera.position.set(1.5, 4.3, 8.6);
 
     // ---------- Lights ----------
     // 天空光：上方偏藍白、下方偏地面灰
@@ -99,19 +99,187 @@
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // ---------- 白色圓角方塊 ----------
-    const box = new THREE.Mesh(
-      new RoundedBoxGeometry(2, 2, 2, 6, 0.25),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45, metalness: 0 })
+    // =====================================================
+    //  設備（全部由基本形狀組成）
+    // =====================================================
+
+    // ---------- 共用材質 ----------
+    const M = {
+      white:    new THREE.MeshStandardMaterial({ color: 0xf7f8fa, roughness: 0.45 }),
+      offWhite: new THREE.MeshStandardMaterial({ color: 0xe9ecef, roughness: 0.4 }),
+      screen:   new THREE.MeshStandardMaterial({ color: 0x0a0b0d, roughness: 0.2, metalness: 0.1 }),
+      dark:     new THREE.MeshStandardMaterial({ color: 0x2a2e34, roughness: 0.7 }),
+      silver:   new THREE.MeshStandardMaterial({ color: 0xc9cdd3, roughness: 0.35, metalness: 0.35 }),
+      keys:     new THREE.MeshStandardMaterial({ color: 0x3a3f46, roughness: 0.8 }),
+      stand:    new THREE.MeshStandardMaterial({ color: 0x8b929b, roughness: 0.4, metalness: 0.3 }),
+      green:    new THREE.MeshStandardMaterial({ color: 0x35d07f, emissive: 0x22c06a, emissiveIntensity: 1.2 }),
+      blue:     new THREE.MeshStandardMaterial({ color: 0x2f6fe0, roughness: 0.5 }),
+    };
+
+    // 小工具：圓角方塊 / 一般方塊
+    const rbox = (w, h, d, r, mat) =>
+      new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 4, Math.min(r, w / 2, h / 2, d / 2)), mat);
+    const box = (w, h, d, mat) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+
+    // ---------- 中間：白色桌上型分析儀 ----------
+    const analyzer = new THREE.Group();
+    analyzer.name = 'analyzer';
+    scene.add(analyzer);
+
+    const BODY_W = 2.4, BODY_H = 1.4, BODY_D = 2.0;
+    const body = rbox(BODY_W, BODY_H, BODY_D, 0.15, M.white);
+    body.position.y = BODY_H / 2;
+    analyzer.add(body);
+
+    // 斜放觸控螢幕的楔形底座（三角形斷面擠出）
+    const wedgeShape = new THREE.Shape();
+    wedgeShape.moveTo(0.35, 0);     // (x = 前後方向, y = 高度)
+    wedgeShape.lineTo(-0.45, 0);
+    wedgeShape.lineTo(-0.45, 0.42);
+    wedgeShape.closePath();
+    const wedgeGeo = new THREE.ExtrudeGeometry(wedgeShape, { depth: 1.4, bevelEnabled: false });
+    wedgeGeo.rotateY(-Math.PI / 2);   // 斷面 x → 世界 z，擠出方向 → 世界 -x
+    const wedge = new THREE.Mesh(wedgeGeo, M.white);
+    wedge.position.set(0.4, BODY_H, 0);   // x 範圍 -1.0 ~ 0.4（偏左，右後留給電源鍵）
+    analyzer.add(wedge);
+
+    // 螢幕外框 + 黑色螢幕（貼在楔形斜面上）
+    const slope = Math.atan2(0.42, 0.8);
+    const bezel = rbox(1.36, 0.06, 0.88, 0.03, M.offWhite);
+    bezel.rotation.x = slope;
+    bezel.position.set(-0.3, BODY_H + 0.21 + 0.03, -0.05);
+    analyzer.add(bezel);
+    const touchScreen = box(1.22, 0.01, 0.74, M.screen);
+    touchScreen.name = 'analyzerScreen';
+    touchScreen.position.y = 0.032;
+    bezel.add(touchScreen);
+
+    // 右後方：電源鍵 + 綠色指示燈環
+    const power = new THREE.Group();
+    power.position.set(0.82, BODY_H, -0.6);
+    analyzer.add(power);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.025, 12, 40), M.green);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.012;
+    ring.castShadow = false;
+    power.add(ring);
+    const powerBtn = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.1, 0.05, 32), M.offWhite);
+    powerBtn.position.y = 0.025;
+    power.add(powerBtn);
+
+    // 前方艙門開口（深色內凹面，門打開時可見）
+    const DOOR_W = 1.3, DOOR_H = 0.62;
+    const cavity = box(DOOR_W - 0.06, DOOR_H - 0.06, 0.02, M.dark);
+    cavity.position.set(0, 0.3 + DOOR_H / 2, BODY_D / 2 + 0.001);
+    analyzer.add(cavity);
+
+    // 艙門「轉軸群組」：轉軸在門的下緣，繞 X 軸旋轉
+    //   doorHinge.rotation.x = 0          → 關閉
+    //   doorHinge.rotation.x = Math.PI/2  → 往下完全打開
+    const doorHinge = new THREE.Group();
+    doorHinge.name = 'doorHinge';
+    doorHinge.position.set(0, 0.3, BODY_D / 2);   // 門下緣、機身前表面
+    analyzer.add(doorHinge);
+
+    const door = rbox(DOOR_W, DOOR_H, 0.06, 0.03, M.offWhite);
+    door.position.set(0, DOOR_H / 2, 0.03);       // 以轉軸為原點往上長
+    doorHinge.add(door);
+    const doorHandle = rbox(0.5, 0.06, 0.05, 0.02, M.silver);
+    doorHandle.position.set(0, DOOR_H - 0.09, 0.08);
+    doorHinge.add(doorHandle);
+
+    // ---------- 左邊：銀色筆電 ----------
+    const laptop = new THREE.Group();
+    laptop.name = 'laptop';
+    laptop.position.set(-3.5, 0, 0.4);
+    laptop.rotation.y = 0.35;
+    scene.add(laptop);
+
+    const lapBase = rbox(2.0, 0.08, 1.4, 0.03, M.silver);
+    lapBase.position.y = 0.04;
+    laptop.add(lapBase);
+    const keyboard = box(1.72, 0.006, 0.55, M.keys);
+    keyboard.position.set(0, 0.082, -0.18);
+    laptop.add(keyboard);
+    const touchpad = box(0.62, 0.004, 0.36, M.offWhite);
+    touchpad.position.set(0, 0.081, 0.38);
+    laptop.add(touchpad);
+
+    // 螢幕轉軸：在底座後緣，微微往後傾
+    const lidHinge = new THREE.Group();
+    lidHinge.name = 'laptopLidHinge';
+    lidHinge.position.set(0, 0.08, -0.68);
+    lidHinge.rotation.x = -0.22;
+    laptop.add(lidHinge);
+    const lid = rbox(2.0, 1.3, 0.06, 0.03, M.silver);
+    lid.position.set(0, 0.65, -0.03);
+    lidHinge.add(lid);
+    const lapScreen = box(1.84, 1.12, 0.006, M.screen);
+    lapScreen.name = 'laptopScreen';
+    lapScreen.position.set(0, 0.67, 0.002);
+    lidHinge.add(lapScreen);
+
+    // ---------- 右邊：立架上的手機 ----------
+    const phoneStand = new THREE.Group();
+    phoneStand.name = 'phoneStand';
+    phoneStand.position.set(3.3, 0, 0.5);
+    phoneStand.rotation.y = -0.35;
+    scene.add(phoneStand);
+
+    const standBase = rbox(0.85, 0.06, 0.75, 0.03, M.stand);
+    standBase.position.y = 0.03;
+    phoneStand.add(standBase);
+
+    // 傾斜的部分（背板 + 托唇 + 手機）
+    const lean = new THREE.Group();
+    lean.position.set(0, 0.06, 0.12);
+    lean.rotation.x = -0.3;
+    phoneStand.add(lean);
+
+    const backPlate = rbox(0.6, 1.0, 0.05, 0.02, M.stand);
+    backPlate.position.set(0, 0.5, -0.065);
+    lean.add(backPlate);
+    const lip = rbox(0.7, 0.12, 0.06, 0.02, M.stand);
+    lip.position.set(0, 0.06, 0.07);
+    lean.add(lip);
+    const brace = box(0.08, 0.06, 0.5, M.stand);     // 底座到背板的支撐
+    brace.position.set(0, 0.03, -0.2);
+    lean.add(brace);
+
+    const phone = rbox(0.62, 1.25, 0.07, 0.05, M.offWhite);
+    phone.name = 'phone';
+    phone.position.set(0, 0.06 + 1.25 / 2, 0);
+    lean.add(phone);
+    const phoneScreen = box(0.56, 1.15, 0.006, M.screen);
+    phoneScreen.name = 'phoneScreen';
+    phoneScreen.position.set(0, phone.position.y, 0.036);
+    lean.add(phoneScreen);
+
+    // ---------- 前方桌面：白色檢測試片（側邊藍色條紋） ----------
+    const strip = new THREE.Group();
+    strip.name = 'testStrip';
+    strip.position.set(0.3, 0, 2.4);
+    strip.rotation.y = 0.15;
+    scene.add(strip);
+
+    const stripBody = rbox(1.6, 0.03, 0.36, 0.01, M.white);
+    stripBody.position.y = 0.015;
+    strip.add(stripBody);
+    const stripStripe = box(1.6, 0.032, 0.06, M.blue);
+    stripStripe.position.set(0, 0.016, -0.15);   // 沿著長邊的一側
+    strip.add(stripStripe);
+
+    // 所有設備都投射 / 接收陰影
+    [analyzer, laptop, phoneStand, strip].forEach(g =>
+      g.traverse(o => { if (o.isMesh) { o.castShadow = o !== ring; o.receiveShadow = true; } })
     );
-    box.position.y = 1;
-    box.castShadow = true;
-    box.receiveShadow = true;
-    scene.add(box);
+
+    // 方便之後做動畫或在主控台測試：window.doorHinge.rotation.x = Math.PI / 2
+    Object.assign(window, { scene, doorHinge, analyzer });
 
     // ---------- 滑鼠拖曳 + 自動旋轉 ----------
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 1, 0);
+    controls.target.set(0, 0.8, 0.6);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.autoRotate = true;
