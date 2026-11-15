@@ -21,15 +21,83 @@
       width: min(100vw, calc(100vh * 16 / 9));
       height: min(100vh, calc(100vw * 9 / 16));
       position: relative;
+      overflow: hidden;
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+      container-type: size;        /* 讓字卡用 cqw 隨畫面等比縮放 */
+      font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+      color: #1d2733;
     }
     #stage canvas {
       display: block;
       width: 100%;
       height: 100%;
-      cursor: grab;
     }
-    #stage canvas:active { cursor: grabbing; }
+    #stage.free canvas { cursor: grab; }
+    #stage.free canvas:active { cursor: grabbing; }
+
+    /* ----- 疊在 3D 上的字卡層 ----- */
+    .layer { position: absolute; inset: 0; pointer-events: none; }
+    #fade { background: #e9eef3; opacity: 0; }
+    .center-card {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      opacity: 0; text-align: center;
+    }
+    .center-card .big { font-size: 5.2cqw; font-weight: 900; letter-spacing: 0.04em; }
+    .center-card .small { margin-top: 1cqw; font-size: 1.6cqw; color: #4b5866; font-weight: 500; }
+    .center-card .bar { width: 6cqw; height: 0.4cqw; border-radius: 1cqw; background: #22b866; margin-bottom: 1.6cqw; }
+
+    #titleCard { padding-bottom: 18cqh; }   /* 標題放上方，避開下方的設備 */
+    #step {
+      position: absolute; left: 3.5cqw; bottom: 9cqh;
+      display: flex; align-items: center; gap: 1.2cqw;
+      padding: 1.1cqw 2cqw 1.1cqw 1.2cqw;
+      background: rgba(255, 255, 255, 0.92);
+      border-radius: 1.2cqw;
+      box-shadow: 0 0.6cqw 2.4cqw rgba(22, 33, 58, 0.18);
+      opacity: 0;
+    }
+    #step .no {
+      background: #22b866; color: #fff; font-weight: 800;
+      font-size: 1.25cqw; letter-spacing: 0.05em;
+      padding: 0.5cqw 0.9cqw; border-radius: 0.7cqw; white-space: nowrap;
+    }
+    #step .title { font-size: 2.3cqw; font-weight: 800; white-space: nowrap; }
+
+    .label {
+      position: absolute; transform: translate(-50%, -100%);
+      background: #fff; border-radius: 0.8cqw;
+      padding: 0.55cqw 1.1cqw; white-space: nowrap;
+      font-size: 1.3cqw; font-weight: 700;
+      box-shadow: 0 0.4cqw 1.6cqw rgba(22, 33, 58, 0.2);
+      opacity: 0;
+    }
+    .label::before {
+      content: ''; display: inline-block; width: 0.7cqw; height: 0.7cqw; border-radius: 50%;
+      background: #22b866; margin-right: 0.6cqw; vertical-align: 0.1cqw;
+    }
+    .label::after {
+      content: ''; position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
+      border: 0.6cqw solid transparent; border-top-color: #fff;
+    }
+
+    /* ----- 播放控制列（滑鼠移動時才出現） ----- */
+    #hud {
+      position: absolute; left: 0; right: 0; bottom: 0;
+      display: flex; align-items: center; gap: 1.2cqw;
+      padding: 1cqw 2cqw;
+      background: linear-gradient(transparent, rgba(15, 23, 34, 0.55));
+      opacity: 0; transition: opacity 0.3s;
+    }
+    #stage.show-hud #hud, #stage.free #hud { opacity: 1; }
+    #hud button {
+      width: 3cqw; height: 3cqw; border: 0; border-radius: 50%;
+      background: #fff; color: #16213a; font-size: 1.2cqw; cursor: pointer;
+    }
+    #bar { position: relative; flex: 1; height: 0.6cqw; background: rgba(255, 255, 255, 0.35); border-radius: 1cqw; cursor: pointer; }
+    #fill { position: absolute; left: 0; top: 0; bottom: 0; background: #22b866; border-radius: 1cqw; }
+    #bar .tick { position: absolute; top: -0.3cqw; width: 0.15cqw; height: 1.2cqw; background: rgba(255, 255, 255, 0.7); }
+    #time { color: #fff; font-size: 1.2cqw; font-variant-numeric: tabular-nums; min-width: 7cqw; text-align: right; }
   </style>
   <script type="importmap">
     {
@@ -41,7 +109,28 @@
   </script>
 </head>
 <body>
-  <div id="stage"></div>
+  <div id="stage">
+    <div class="layer" id="labels"></div>
+    <div class="layer" id="fade"></div>
+    <div class="layer">
+      <div class="center-card" id="titleCard">
+        <div class="bar"></div>
+        <div class="big">QA-100 操作指南</div>
+        <div class="small">桌上型分析儀・3D 操作示範</div>
+      </div>
+      <div class="center-card" id="endCard">
+        <div class="bar"></div>
+        <div class="big">QA-100 操作說明</div>
+        <div class="small">感謝觀看</div>
+      </div>
+      <div id="step"><span class="no"></span><span class="title"></span></div>
+    </div>
+    <div id="hud">
+      <button id="playBtn" title="播放／暫停（空白鍵）">❚❚</button>
+      <div id="bar"><div id="fill"></div></div>
+      <span id="time">0.0 / 61s</span>
+    </div>
+  </div>
 
   <script type="module">
     import * as THREE from 'three';
@@ -391,18 +480,29 @@
         c.fillStyle = '#fff';
         c.fillRect(W / 2 - 10, H / 2 - 125, 20, 70);
         c.fillRect(W / 2 - 35, H / 2 - 100, 70, 20);
-        txt(c, '檢測分析儀', W / 2, H / 2 + 20, 44, { color: '#fff', weight: 700 });
+        txt(c, 'QA-100', W / 2, H / 2 + 20, 48, { color: '#fff', weight: 800 });
         rr(c, W / 2 - 220, H / 2 + 90, 440, 14, 7, '#26324a');
         if (p > 0) rr(c, W / 2 - 220, H / 2 + 90, 440 * Math.min(p, 1), 14, 7, C.green);
         txt(c, `系統啟動中… ${Math.round(p * 100)}%`, W / 2, H / 2 + 145, 26, { color: '#9aa6bd' });
       },
 
-      home(c, W, H) {
+      // value = { tap: 0~1 } 時畫出「點一下」的按壓效果
+      home(c, W, H, v = {}) {
         aBase(c, W, H, '首頁');
+        const tap = v.tap;
+        const pressed = tap != null && tap < 0.5;
         c.save();
-        c.shadowColor = 'rgba(34,184,102,0.45)'; c.shadowBlur = 40; c.shadowOffsetY = 12;
-        rr(c, W / 2 - 280, 130, 560, 260, 40, C.green);
+        c.shadowColor = 'rgba(34,184,102,0.45)';
+        c.shadowBlur = pressed ? 12 : 40; c.shadowOffsetY = pressed ? 4 : 12;
+        rr(c, W / 2 - 280, 130, 560, 260, 40, pressed ? '#179a52' : C.green);
         c.restore();
+        if (tap != null) {                                 // 點擊漣漪
+          c.save();
+          c.beginPath(); c.roundRect(W / 2 - 280, 130, 560, 260, 40); c.clip();
+          circle(c, W / 2 + 40, 270, 30 + 260 * tap, `rgba(255,255,255,${0.45 * (1 - tap)})`);
+          c.restore();
+          circle(c, W / 2 + 40, 270, 34, null, `rgba(255,255,255,${0.9 * (1 - tap)})`, 6);
+        }
         c.beginPath();                                   // 播放三角形
         c.moveTo(W / 2 - 190, 215); c.lineTo(W / 2 - 190, 305); c.lineTo(W / 2 - 115, 260);
         c.closePath(); c.fillStyle = '#fff'; c.fill();
@@ -441,20 +541,27 @@
         rr(c, W / 2 - 150, 560, 300, 12, 6, '#0d0f12');
       },
 
-      scanning(c, W, H) {
+      // value = 角度（弧度），用來轉動掃描圈與移動掃描線
+      scanning(c, W, H, a = 0) {
         aBase(c, W, H, '讀取試片');
-        const x = W / 2 - 320, y = 190, w = 640, h = 150;
+        const x = W / 2 - 300, y = 120, w = 600, h = 130;
         rr(c, x, y, w, h, 16, C.white, '#c9d1da', 3);
-        rr(c, x, y, w, 32, [16, 16, 0, 0], C.blue);
+        rr(c, x, y, w, 30, [16, 16, 0, 0], C.blue);
         c.fillStyle = '#d9dee4';
-        for (let i = 0; i < 6; i++) c.fillRect(x + 80 + i * 90, y + 70, 40, 50);
-        const sx = x + w * 0.62;                       // 掃描光線
+        for (let i = 0; i < 6; i++) c.fillRect(x + 70 + i * 86, y + 60, 38, 46);
+        const sx = x + 20 + (w - 46) * (0.5 + 0.5 * Math.sin(a * 0.8));   // 掃描光線
         const g = c.createLinearGradient(sx - 60, 0, sx + 6, 0);
         g.addColorStop(0, 'rgba(34,184,102,0)'); g.addColorStop(1, 'rgba(34,184,102,0.45)');
-        c.fillStyle = g; c.fillRect(sx - 60, y - 20, 66, h + 40);
-        c.fillStyle = C.green; c.fillRect(sx, y - 20, 6, h + 40);
-        txt(c, '正在讀取試片資訊…', W / 2, 440, 44, { weight: 700 });
-        txt(c, '請勿移動試片', W / 2, 500, 26, { color: C.sub });
+        c.fillStyle = g; c.fillRect(sx - 60, y - 16, 66, h + 32);
+        c.fillStyle = C.green; c.fillRect(sx, y - 16, 6, h + 32);
+        // 轉動的掃描圈
+        const cx = W / 2, cy = 375, r = 58;
+        circle(c, cx, cy, r, null, C.line, 14);
+        c.lineCap = 'round';
+        c.beginPath(); c.arc(cx, cy, r, a, a + Math.PI * 1.2);
+        c.strokeStyle = C.green; c.lineWidth = 14; c.stroke();
+        txt(c, '正在讀取試片資訊…', W / 2, 500, 44, { weight: 700 });
+        txt(c, '請勿移動試片', W / 2, 558, 26, { color: C.sub });
       },
 
       verified(c, W, H) {
@@ -464,10 +571,17 @@
         txt(c, '批號 LOT-24A118 · 有效期限 2027/03', W / 2, 485, 26, { color: C.sub });
       },
 
-      countdown(c, W, H, sec = 5) {
+      // value = 秒數，或 { sec, total, frac, badge }（badge 會顯示在右上角）
+      countdown(c, W, H, v = 5) {
+        const o = typeof v === 'object' ? v : { sec: v };
+        const total = o.total || 5;
         aBase(c, W, H, '反應中');
-        arcRing(c, W / 2, 285, 140, sec / 5, C.green, 22);
-        txt(c, sec, W / 2, 280, 130, { weight: 800 });
+        arcRing(c, W / 2, 285, 140, o.frac ?? o.sec / total, C.green, 22);
+        txt(c, o.sec, W / 2, 280, 130, { weight: 800 });
+        if (o.badge) {
+          rr(c, W - 230, 96, 200, 52, 26, '#fdf1df');
+          txt(c, '⏩ ' + o.badge, W - 130, 123, 24, { color: '#c27a12', weight: 800 });
+        }
         txt(c, '秒後開始分析', W / 2, 500, 40, { weight: 700 });
         txt(c, '反應進行中，請勿開啟艙門', W / 2, 555, 26, { color: C.sub });
       },
@@ -739,56 +853,317 @@
       return true;
     }
 
-    // ----- 自動輪播示範 -----
-    const demo = [];
-    const step = (dur, a, p, l) => demo.push({ dur, a, p, l });
-    step(1.5, ['off'], ['login'], ['overview', { today: 12 }]);
-    for (let i = 0; i <= 10; i++) step(0.2, ['booting', i / 10]);
-    step(2.0, ['home']);
-    step(2.0, ['loginQR'], ['camera']);
-    step(1.8, null, ['loginSuccess']);
-    step(2.2, ['insertStrip']);
-    step(2.0, ['scanning']);
-    step(1.8, ['verified']);
-    for (let s = 5; s >= 1; s--) step(1.0, ['countdown', s]);
-    for (let p = 0; p <= 100; p += 5) step(0.15, ['analyzing', p]);
-    step(2.5, ['result', 5.0]);
-    step(3.0, ['saved', 5.0], ['latestResult', 5.0], ['table', 5.0]);
-    step(3.0, null, null, ['overview', { today: 13, week: 87 }]);
+    // =====================================================
+    //  QA-100 操作指南：61 秒時間軸
+    //  所有畫面、動作、鏡頭都由「時間 t」直接算出來，所以可以任意跳轉、暫停、重播
+    // =====================================================
+    const V = (x, y, z) => new THREE.Vector3(x, y, z);
+    const clamp01 = x => Math.min(1, Math.max(0, x));
+    const smooth = x => { x = clamp01(x); return x * x * (3 - 2 * x); };
+    const ramp = (t, a, b) => smooth((t - a) / (b - a));       // a→b 之間 0→1
+    const q = (x, s) => Math.round(x / s) * s;                    // 量化，避免每格都重畫
+    const DURATION = 61;
 
-    let demoOn = true, demoIdx = -1, demoT = 0;
-    function applyStep(st) {
-      if (st.a) setScreen('analyzer', ...st.a);
-      if (st.p) setScreen('phone', ...st.p);
-      if (st.l) setScreen('laptop', ...st.l);
+    // ----- 分段（對照分鏡表） -----
+    //  [開始, 結束, 鏡頭, 段落標籤, 字卡]
+    const SEGS = [
+      [0, 4, 'intro', null, null],
+      [4, 10, 'overview', '總覽', '準備物品'],
+      [10, 15, 'power', 'STEP 1', '開啟電源'],
+      [15, 20, 'screen', 'STEP 2', '開始檢測'],
+      [20, 25, 'phone', 'STEP 3', '會員 App 登入'],
+      [25, 31, 'door', 'STEP 4', '插入試片'],
+      [31, 36, 'screen', 'STEP 5', '掃描試片'],
+      [36, 41, 'screen', 'STEP 6', '等待反應'],
+      [41, 46, 'screen', 'STEP 7', '分析與結果'],
+      [46, 52, 'aerial', 'STEP 8', '結果同步'],
+      [52, 57, 'door', 'STEP 9', '取出試片'],
+      [57, 61, 'outro', null, null],
+    ];
+    const segIndex = t => Math.max(0, SEGS.findIndex(s => t >= s[0] && t < s[1]));
+
+    // ----- 鏡頭：每個鏡位從 p0/t0 慢慢推到 p1/t1（位置 / 看的點） -----
+    // 分析儀螢幕中心與法線（斜面朝前上方）
+    const scrC = new THREE.Vector3(), scrN = V(0, Math.cos(slope), Math.sin(slope));
+    scene.updateMatrixWorld(true);
+    touchScreen.getWorldPosition(scrC);
+    const scrCam = d => scrC.clone().addScaledVector(scrN, d);
+    const SHOTS = {
+      intro:    { p0: V(12, 2.6, 1.2),  p1: V(10.6, 3.0, 3.4), t0: V(0, 2.3, 0.3), t1: V(0, 2.3, 0.3) },
+      overview: { p0: V(1.8, 4.8, 9.8), p1: V(0.6, 4.2, 8.6), t0: V(0, 0.7, 0.6), t1: V(0, 0.7, 0.6) },
+      power:    { p0: V(2.7, 3.7, 2.5), p1: V(2.3, 3.3, 2.0), t0: V(0.7, 1.4, -0.5), t1: V(0.75, 1.4, -0.55) },
+      screen:   { p0: scrCam(2.55), p1: scrCam(2.3), t0: scrC.clone(), t1: scrC.clone() },
+      phone:    { p0: V(3.0, 3.3, 5.6), p1: V(2.4, 3.0, 5.0), t0: V(1.7, 1.0, 0.2), t1: V(1.7, 1.0, 0.2) },
+      door:     { p0: V(2.1, 2.1, 5.3), p1: V(1.4, 1.8, 4.7), t0: V(0.1, 0.5, 1.5), t1: V(0.1, 0.5, 1.5) },
+      aerial:   { p0: V(0.8, 11.5, 5.6), p1: V(-0.6, 11, 6.2), t0: V(0, 0, 0.6), t1: V(0, 0, 0.6) },
+      outro:    { p0: V(1.5, 4.3, 8.6), p1: V(2.2, 5.6, 11.5), t0: V(0, 0.8, 0.6), t1: V(0, 0.8, 0.6) },
+    };
+    const BLEND = 1.4;   // 換鏡頭時的過場秒數
+    function shotPose(seg, u) {
+      const s = SHOTS[seg[2]], k = clamp01(u / (seg[1] - seg[0]));
+      return { p: s.p0.clone().lerp(s.p1, k), t: s.t0.clone().lerp(s.t1, k) };
     }
-    function updateDemo(dt) {
-      if (!demoOn) return;
-      demoT -= dt;
-      while (demoT <= 0) {
-        demoIdx = (demoIdx + 1) % demo.length;
-        demoT += demo[demoIdx].dur;
-        applyStep(demo[demoIdx]);
+    function cameraAt(t) {
+      const i = segIndex(t), seg = SEGS[i];
+      const pose = shotPose(seg, t - seg[0]);
+      if (i > 0 && t - seg[0] < BLEND) {
+        const prev = SEGS[i - 1];
+        const from = shotPose(prev, prev[1] - prev[0]);
+        const k = smooth((t - seg[0]) / BLEND);
+        pose.p = from.p.lerp(pose.p, k);
+        pose.t = from.t.lerp(pose.t, k);
+      }
+      return pose;
+    }
+
+    // ----- 試片：從盒子裡拿出來，飛進艙門 -----
+    const restPos = strip.getWorldPosition(new THREE.Vector3());
+    const restYaw = stripBox.rotation.y;
+    scene.attach(strip);          // 改掛在場景下，直接用世界座標控制
+    const STRIP_POSES = {
+      rest:   { p: restPos,             yaw: restYaw },
+      lift:   { p: V(0.2, 1.05, 2.55),  yaw: Math.PI / 2 },
+      mouth:  { p: V(0, 0.6, 1.95),     yaw: Math.PI / 2 },   // 停在艙門口
+      inside: { p: V(0, 0.6, 0.15),     yaw: Math.PI / 2 },   // 完全進到機器裡
+    };
+    const STRIP_KEYS = [
+      [0, 'rest'], [26.6, 'rest'], [27.6, 'lift'], [28.3, 'mouth'], [29.0, 'inside'],   // STEP 4 飛入
+      [53.4, 'inside'], [54.2, 'mouth'], [54.9, 'lift'], [55.7, 'rest'],                  // STEP 9 滑出
+    ];
+    function stripAt(t) {
+      let i = 0;
+      while (i < STRIP_KEYS.length - 1 && t >= STRIP_KEYS[i + 1][0]) i++;
+      const [ta, a] = STRIP_KEYS[i];
+      const [tb, b] = STRIP_KEYS[Math.min(i + 1, STRIP_KEYS.length - 1)];
+      const k = tb > ta ? smooth((t - ta) / (tb - ta)) : 0;
+      const A = STRIP_POSES[a], B = STRIP_POSES[b];
+      strip.position.copy(A.p).lerp(B.p, k);
+      strip.rotation.set(0, A.yaw + (B.yaw - A.yaw) * k, 0);
+    }
+
+    // ----- 電源鍵按下的漣漪 -----
+    const pressRipple = new THREE.Mesh(
+      new THREE.RingGeometry(0.1, 0.13, 40),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, toneMapped: false })
+    );
+    pressRipple.rotation.x = -Math.PI / 2;
+    pressRipple.position.y = 0.06;
+    power.add(pressRipple);
+
+    // ----- 虛線連線與資料光點 -----
+    const phonePos = phoneScreen.getWorldPosition(new THREE.Vector3());
+    const laptopPos = lapScreen.getWorldPosition(new THREE.Vector3());
+    function makeDashes(a, b, lift, color, count = 28) {
+      const mid = a.clone().add(b).multiplyScalar(0.5);
+      mid.y += lift;
+      const curve = new THREE.QuadraticBezierCurve3(a.clone(), mid, b.clone());
+      const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
+      const geo = new THREE.BoxGeometry(0.035, 0.035, 0.11);
+      const group = new THREE.Group();
+      for (let i = 0; i < count; i++) {
+        const u = (i + 0.5) / count;
+        const m = new THREE.Mesh(geo, mat);
+        m.position.copy(curve.getPoint(u));
+        m.lookAt(m.position.clone().add(curve.getTangent(u)));
+        group.add(m);
+      }
+      scene.add(group);
+      return { curve, group, mat };
+    }
+    function showDashes(d, progress, opacity) {
+      d.mat.opacity = opacity;
+      d.group.visible = opacity > 0.01;
+      const n = d.group.children.length;
+      d.group.children.forEach((m, i) => { m.visible = (i + 0.5) / n <= progress; });
+    }
+    function makeParticles(curve, color, n = 6) {
+      const core = new THREE.SphereGeometry(0.07, 16, 12);
+      const halo = new THREE.SphereGeometry(0.16, 16, 12);
+      const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+      const haloMat = new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: 0.35, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending,
+      });
+      const list = [];
+      for (let i = 0; i < n; i++) {
+        const m = new THREE.Mesh(core, coreMat);
+        m.add(new THREE.Mesh(halo, haloMat));
+        m.visible = false;
+        scene.add(m);
+        list.push(m);
+      }
+      return { curve, list };
+    }
+    function showParticles(P, t, start, travel = 1.6, gap = 0.3) {
+      P.list.forEach((m, i) => {
+        const s = (t - start - i * gap) / travel;
+        m.visible = s > 0 && s < 1;
+        if (m.visible) m.position.copy(P.curve.getPoint(smooth(s)));
+      });
+    }
+    const loginLink = makeDashes(phonePos, scrC, 1.3, 0x2f6fe0);                 // STEP 3
+    const toPhone = makeDashes(scrC, phonePos, 2.2, 0x22b866);                   // STEP 8
+    const toLaptop = makeDashes(scrC, laptopPos, 2.2, 0x22b866);
+    const dotsPhone = makeParticles(toPhone.curve, 0x35e08a);
+    const dotsLaptop = makeParticles(toLaptop.curve, 0x35e08a);
+
+    // ----- 依時間 t 設定所有螢幕與物件 -----
+    function applyTimeline(t) {
+      // 分析儀螢幕
+      if (t < 11.3) setScreen('analyzer', 'off');
+      else if (t < 14.8) setScreen('analyzer', 'booting', q(clamp01((t - 11.3) / 3.3), 0.02));
+      else if (t < 18.6) setScreen('analyzer', 'home', t >= 17 && t < 17.8 ? { tap: q((t - 17) / 0.8, 0.05) } : undefined);
+      else if (t < 23.5) setScreen('analyzer', 'loginQR');
+      else if (t < 31) setScreen('analyzer', 'insertStrip');
+      else if (t < 34) setScreen('analyzer', 'scanning', q((t - 31) * 5, 0.1));
+      else if (t < 36) setScreen('analyzer', 'verified');
+      else if (t < 41) {
+        const u = clamp01((t - 36) / 4.6);   // 15 → 0（最後 0.4 秒停在 0）
+        setScreen('analyzer', 'countdown', { sec: Math.ceil(15 * (1 - u)), total: 15, frac: q(1 - u, 0.005), badge: '縮時示範' });
+      }
+      else if (t < 44.6) setScreen('analyzer', 'analyzing', Math.round(clamp01((t - 41) / 3.4) * 100));
+      else if (t < 46.2) setScreen('analyzer', 'result', 5.0);
+      else if (t < 55.5) setScreen('analyzer', 'saved', 5.0);
+      else setScreen('analyzer', 'home');
+
+      // 手機
+      if (t < 20.6) setScreen('phone', 'login');
+      else if (t < 23) setScreen('phone', 'camera');
+      else if (t < 48.7) setScreen('phone', 'loginSuccess');
+      else setScreen('phone', 'latestResult', 5.0);
+
+      // 筆電
+      if (t < 49.2) setScreen('laptop', 'overview', { today: 12 });
+      else setScreen('laptop', 'table', 5.0);
+
+      // STEP 1：按下電源鍵（往下壓再彈起）＋ 漣漪 ＋ 綠燈亮起時跳一下
+      powerBtn.position.y = 0.025 - 0.02 * (ramp(t, 10.8, 11.0) - ramp(t, 11.1, 11.4));
+      const rp = (t - 10.9) / 0.8;
+      pressRipple.visible = rp > 0 && rp < 1;
+      if (pressRipple.visible) {
+        pressRipple.scale.setScalar(1 + 2.2 * rp);
+        pressRipple.material.opacity = 0.9 * (1 - rp);
+      }
+      const pk = (t - 11.3) / 0.7;
+      ring.scale.setScalar(pk > 0 && pk < 1 ? 1 + 0.3 * Math.sin(pk * Math.PI) : 1);
+
+      // 艙門：STEP 4 開→關，STEP 9 開→關
+      doorHinge.rotation.x = Math.PI * 0.5 *
+        (ramp(t, 25.4, 26.4) - ramp(t, 29.3, 30.2) + ramp(t, 52.3, 53.2) - ramp(t, 55.9, 56.7));
+
+      // 試片
+      stripAt(t);
+
+      // STEP 3：手機 ↔ 分析儀 虛線連線
+      showDashes(loginLink, ramp(t, 21.2, 22.4), ramp(t, 21.1, 21.3) * (1 - ramp(t, 24.2, 24.8)));
+
+      // STEP 8：資料光點傳到手機與筆電
+      const syncOpacity = 0.55 * ramp(t, 46.4, 46.9) * (1 - ramp(t, 51.2, 51.8));
+      showDashes(toPhone, 1, syncOpacity);
+      showDashes(toLaptop, 1, syncOpacity);
+      showParticles(dotsPhone, t, 47.0);
+      showParticles(dotsLaptop, t, 47.3);
+    }
+
+    // ----- 字卡、設備標籤、淡入淡出 -----
+    const $ = id => document.getElementById(id);
+    const titleCard = $('titleCard'), endCard = $('endCard'), fadeEl = $('fade');
+    const stepEl = $('step'), stepNo = stepEl.querySelector('.no'), stepTitle = stepEl.querySelector('.title');
+    const LABELS = [
+      [V(-0.3, 2.35, 0), 'QA-100 分析儀', 4.6],
+      [V(-3.5, 1.8, 0.0), '筆電・後台系統', 5.4],
+      [V(3.3, 1.85, 0.5), '手機・會員 App', 6.2],
+      [V(0.3, 0.45, 2.4), '檢測試片', 7.0],
+    ].map(([pos, text, at]) => {
+      const el = document.createElement('div');
+      el.className = 'label';
+      el.textContent = text;
+      $('labels').appendChild(el);
+      return { pos, el, at };
+    });
+    let shownSeg = -1;
+    const tmpV = new THREE.Vector3();
+    function updateOverlay(t) {
+      titleCard.style.opacity = ramp(t, 0.4, 1.6) * (1 - ramp(t, 3.3, 3.9));
+      titleCard.style.transform = `translateY(${(1 - ramp(t, 0.4, 1.6)) * 1.5}cqw)`;
+      endCard.style.opacity = ramp(t, 58, 59.2);
+      fadeEl.style.opacity = Math.max(1 - ramp(t, 0, 1), 0.88 * ramp(t, 57.2, 58.6));
+
+      const i = segIndex(t), seg = SEGS[i];
+      if (i !== shownSeg) {
+        shownSeg = i;
+        stepNo.textContent = seg[3] || '';
+        stepTitle.textContent = seg[4] || '';
+      }
+      stepEl.style.opacity = seg[4] ? ramp(t, seg[0] + 0.3, seg[0] + 0.9) * (1 - ramp(t, seg[1] - 0.5, seg[1] - 0.1)) : 0;
+
+      for (const L of LABELS) {
+        const o = ramp(t, L.at, L.at + 0.5) * (1 - ramp(t, 9.4, 9.9));
+        L.el.style.opacity = o;
+        if (o <= 0) continue;
+        tmpV.copy(L.pos).project(camera);
+        L.el.style.left = `${(tmpV.x * 0.5 + 0.5) * 100}%`;
+        L.el.style.top = `${(-tmpV.y * 0.5 + 0.5) * 100}%`;
+        L.el.style.marginTop = `${(1 - o) * 1}cqw`;
       }
     }
-    const startDemo = () => { demoOn = true; };
-    const stopDemo = () => { demoOn = false; };
 
-    // 開放到主控台：setScreen('analyzer', 'result', 7.2)、stopDemo()、startDemo()
-    Object.assign(window, { setScreen, startDemo, stopDemo, screens });
-
-    // ---------- 滑鼠拖曳 + 自動旋轉 ----------
+    // ---------- 滑鼠拖曳（暫停時可自由旋轉視角） ----------
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 0.8, 0.6);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 0.6;           // 慢慢轉
     controls.enablePan = false;
-    controls.minDistance = 4;
+    controls.minDistance = 1.5;
     controls.maxDistance = 25;
     controls.maxPolarAngle = Math.PI / 2 - 0.05; // 不讓鏡頭鑽到地板下
-    controls.update();
+    controls.enabled = false;
+
+    // ---------- 播放控制 ----------
+    let T = 0, playing = true, resumeFrom = null;
+    const playBtn = $('playBtn'), fill = $('fill'), timeEl = $('time'), bar = $('bar');
+    SEGS.slice(1).forEach(s => {
+      const tick = document.createElement('div');
+      tick.className = 'tick';
+      tick.style.left = `${s[0] / DURATION * 100}%`;
+      bar.appendChild(tick);
+    });
+    function play() {
+      if (playing) return;
+      playing = true;
+      resumeFrom = { p: camera.position.clone(), t: controls.target.clone(), at: T };  // 從目前視角平滑回到運鏡
+      controls.enabled = false;
+      stage.classList.remove('free');
+      playBtn.textContent = '❚❚';
+    }
+    function pause() {
+      if (!playing) return;
+      playing = false;
+      controls.enabled = true;       // 暫停時可以拖曳看四周
+      stage.classList.add('free');
+      playBtn.textContent = '▶';
+    }
+    function seek(t) {
+      T = Math.min(Math.max(t, 0), DURATION - 0.001);
+      resumeFrom = null;
+      if (!playing) applyTimeline(T);
+    }
+    playBtn.addEventListener('click', () => (playing ? pause() : play()));
+    bar.addEventListener('click', e => {
+      const r = bar.getBoundingClientRect();
+      seek((e.clientX - r.left) / r.width * DURATION);
+    });
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); }
+    });
+    let hudTimer;
+    stage.addEventListener('mousemove', () => {
+      stage.classList.add('show-hud');
+      clearTimeout(hudTimer);
+      hudTimer = setTimeout(() => stage.classList.remove('show-hud'), 2500);
+    });
+
+    // 開放到主控台：player.seek(36)、player.pause()、setScreen('analyzer', 'result', 7.2)
+    const player = { play, pause, seek, get time() { return T; }, DURATION };
+    Object.assign(window, { setScreen, screens, player });
 
     // ---------- 尺寸調整 ----------
     function resize() {
@@ -803,10 +1178,37 @@
 
     // ---------- 動畫迴圈 ----------
     const clock = new THREE.Clock();
+    const camTarget = new THREE.Vector3();
     renderer.setAnimationLoop(() => {
       const dt = Math.min(clock.getDelta(), 0.1);
-      updateDemo(dt);
-      controls.update();
+      if (playing) {
+        T += dt;
+        if (T >= DURATION) T -= DURATION;     // 播完自動重播
+      }
+      applyTimeline(T);
+
+      if (playing) {
+        const pose = cameraAt(T);
+        if (resumeFrom) {                     // 暫停後恢復播放：用 1 秒滑回運鏡位置
+          const k = smooth((T - resumeFrom.at) / 1.0);
+          pose.p = resumeFrom.p.clone().lerp(pose.p, k);
+          pose.t = resumeFrom.t.clone().lerp(pose.t, k);
+          if (k >= 1 || T < resumeFrom.at) resumeFrom = null;
+        }
+        camera.position.copy(pose.p);
+        camTarget.copy(pose.t);
+        camera.lookAt(camTarget);
+        controls.target.copy(camTarget);      // 暫停時從目前畫面接手拖曳
+      } else {
+        controls.update();
+      }
+
+      updateOverlay(T);
+      const shown = T.toFixed(1);
+      if (timeEl.textContent !== `${shown} / ${DURATION}s`) {
+        timeEl.textContent = `${shown} / ${DURATION}s`;
+        fill.style.width = `${T / DURATION * 100}%`;
+      }
       renderer.render(scene, camera);
     });
   </script>
