@@ -35,51 +35,84 @@
     #stage.free canvas { cursor: grab; }
     #stage.free canvas:active { cursor: grabbing; }
 
-    /* ----- 疊在 3D 上的字卡層 ----- */
+    /* ----- 疊在 3D 上的影片字卡層（全部用 cqw，跟著畫面寬度等比縮放） ----- */
+    :root { --teal: #14b8a6; --navy: #16213a; }
     .layer { position: absolute; inset: 0; pointer-events: none; }
-    #fade { background: #e9eef3; opacity: 0; }
-    .center-card {
+    #fade { background: #eef2f6; opacity: 0; }
+
+    /* 片頭：左側大標題 */
+    #titleCard {
+      position: absolute; left: 6cqw; top: 50%; transform: translateY(-50%);
+      opacity: 0;
+    }
+    #titleCard .eyebrow { font-size: 1.4cqw; font-weight: 700; color: var(--teal); letter-spacing: 0.3em; }
+    #titleCard .big { margin-top: 0.8cqw; font-size: 5.4cqw; font-weight: 900; line-height: 1.15; letter-spacing: 0.02em; }
+    #titleCard .rule { width: 6cqw; height: 0.45cqw; border-radius: 1cqw; background: var(--teal); margin-top: 1.6cqw; }
+
+    /* 片尾：置中產品名 */
+    #endCard {
       position: absolute; inset: 0;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       opacity: 0; text-align: center;
     }
-    .center-card .big { font-size: 5.2cqw; font-weight: 900; letter-spacing: 0.04em; }
-    .center-card .small { margin-top: 1cqw; font-size: 1.6cqw; color: #4b5866; font-weight: 500; }
-    .center-card .bar { width: 6cqw; height: 0.4cqw; border-radius: 1cqw; background: #22b866; margin-bottom: 1.6cqw; }
+    #endCard .big { font-size: 7cqw; font-weight: 900; letter-spacing: 0.04em; line-height: 1; }
+    #endCard .sub { margin-top: 1.4cqw; font-size: 2.2cqw; font-weight: 700; color: #4b5866; letter-spacing: 0.4em; padding-left: 0.4em; }
+    #endCard .rule { width: 5cqw; height: 0.4cqw; border-radius: 1cqw; background: var(--teal); margin-top: 1.8cqw; }
 
-    #titleCard { padding-bottom: 18cqh; }   /* 標題放上方，避開下方的設備 */
-    #step {
-      position: absolute; left: 3.5cqw; bottom: 9cqh;
-      display: flex; align-items: center; gap: 1.2cqw;
-      padding: 1.1cqw 2cqw 1.1cqw 1.2cqw;
-      background: rgba(255, 255, 255, 0.92);
-      border-radius: 1.2cqw;
+    /* 左上：白色膠囊進度條，9 個圓點，目前步驟拉長 */
+    #progress {
+      position: absolute; left: 3cqw; top: 2.6cqw;
+      display: flex; align-items: center; gap: 0.7cqw;
+      padding: 0.85cqw 1.2cqw;
+      background: rgba(255, 255, 255, 0.95); border-radius: 10cqw;
+      box-shadow: 0 0.4cqw 1.6cqw rgba(22, 33, 58, 0.15);
+      opacity: 0;
+    }
+    #progress .dot {
+      width: 0.75cqw; height: 0.75cqw; border-radius: 1cqw;
+      background: #cfd6de;
+      transition: width 0.35s ease, background 0.35s ease;
+    }
+    #progress .dot.done { background: #9fded6; }
+    #progress .dot.now { width: 2.8cqw; background: var(--teal); }
+
+    /* 右上：縮時示範 */
+    #badge {
+      position: absolute; right: 3cqw; top: 2.6cqw;
+      display: flex; align-items: center; gap: 0.6cqw;
+      padding: 0.75cqw 1.4cqw;
+      background: rgba(22, 33, 58, 0.88); color: #fff; border-radius: 10cqw;
+      font-size: 1.3cqw; font-weight: 800; letter-spacing: 0.08em;
+      opacity: 0;
+    }
+    #badge::before { content: '⏩'; font-size: 1.1cqw; }
+
+    /* 左下：白色說明卡（左側青色邊條） */
+    #card {
+      position: absolute; left: 3cqw; bottom: 6.5cqw;
+      width: 34cqw; padding: 1.4cqw 1.8cqw 1.4cqw 2.4cqw;
+      background: rgba(255, 255, 255, 0.96); border-radius: 1.1cqw;
       box-shadow: 0 0.6cqw 2.4cqw rgba(22, 33, 58, 0.18);
-      opacity: 0;
+      overflow: hidden; opacity: 0;
     }
-    #step .no {
-      background: #22b866; color: #fff; font-weight: 800;
-      font-size: 1.25cqw; letter-spacing: 0.05em;
-      padding: 0.5cqw 0.9cqw; border-radius: 0.7cqw; white-space: nowrap;
+    #card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 0.55cqw; background: var(--teal); }
+    #card .tag {
+      display: inline-block; padding: 0.25cqw 0.75cqw; border-radius: 0.5cqw;
+      background: #e3f6f3; color: #0f8f82; font-size: 1.05cqw; font-weight: 800; letter-spacing: 0.08em;
     }
-    #step .title { font-size: 2.3cqw; font-weight: 800; white-space: nowrap; }
+    #card .title { margin-top: 0.6cqw; font-size: 2.4cqw; font-weight: 900; }
+    #card .desc { margin-top: 0.4cqw; font-size: 1.3cqw; color: #4b5866; line-height: 1.5; }
 
-    .label {
-      position: absolute; transform: translate(-50%, -100%);
-      background: #fff; border-radius: 0.8cqw;
-      padding: 0.55cqw 1.1cqw; white-space: nowrap;
-      font-size: 1.3cqw; font-weight: 700;
-      box-shadow: 0 0.4cqw 1.6cqw rgba(22, 33, 58, 0.2);
-      opacity: 0;
+    /* 總覽：設備標籤（CSS2DRenderer） */
+    .devtag { display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+    .devtag .pill {
+      background: var(--navy); color: #fff; white-space: nowrap;
+      font-size: 1.25cqw; font-weight: 700; letter-spacing: 0.04em;
+      padding: 0.55cqw 1.1cqw; border-radius: 0.7cqw;
+      box-shadow: 0 0.4cqw 1.4cqw rgba(22, 33, 58, 0.3);
     }
-    .label::before {
-      content: ''; display: inline-block; width: 0.7cqw; height: 0.7cqw; border-radius: 50%;
-      background: #22b866; margin-right: 0.6cqw; vertical-align: 0.1cqw;
-    }
-    .label::after {
-      content: ''; position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
-      border: 0.6cqw solid transparent; border-top-color: #fff;
-    }
+    .devtag .stem { width: 0.14cqw; height: 3.2cqw; background: var(--navy); transform-origin: top; }
+    .devtag .end { width: 0.75cqw; height: 0.75cqw; border-radius: 50%; background: var(--navy); border: 0.18cqw solid #fff; margin-top: -0.1cqw; }
 
     /* ----- 播放控制列（按 H 可隱藏，方便錄影） ----- */
     #hud {
@@ -116,20 +149,21 @@
 </head>
 <body>
   <div id="stage">
-    <div class="layer" id="labels"></div>
     <div class="layer" id="fade"></div>
     <div class="layer">
-      <div class="center-card" id="titleCard">
-        <div class="bar"></div>
-        <div class="big">QA-100 操作指南</div>
-        <div class="small">桌上型分析儀・3D 操作示範</div>
+      <div id="titleCard">
+        <div class="eyebrow">OPERATION GUIDE</div>
+        <div class="big">QA-100<br>操作指南</div>
+        <div class="rule"></div>
       </div>
-      <div class="center-card" id="endCard">
-        <div class="bar"></div>
-        <div class="big">QA-100 操作說明</div>
-        <div class="small">感謝觀看</div>
+      <div id="progress"></div>
+      <div id="badge">縮時示範</div>
+      <div id="card"><span class="tag"></span><div class="title"></div><div class="desc"></div></div>
+      <div id="endCard">
+        <div class="big">QA-100</div>
+        <div class="sub">操作說明</div>
+        <div class="rule"></div>
       </div>
-      <div id="step"><span class="no"></span><span class="title"></span></div>
     </div>
     <div id="hud">
       <button id="playBtn" title="播放／暫停（空白鍵）">❚❚</button>
@@ -143,6 +177,7 @@
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+    import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
     const stage = document.getElementById('stage');
 
@@ -875,19 +910,21 @@
     scene.updateMatrixWorld(true);
     const scrC = touchScreen.getWorldPosition(new THREE.Vector3());
     const scrN = V(0, Math.cos(slope), Math.sin(slope));
-    const SCREEN = { cam: scrC.clone().addScaledVector(scrN, 2.55), look: scrC.clone() };
+    // 螢幕特寫：整體往左下偏移，讓螢幕落在畫面右上，避開左下說明卡
+    const SCREEN_SHIFT = V(-0.34, -0.1, 0.05);
+    const SCREEN = { cam: scrC.clone().addScaledVector(scrN, 3.0).add(SCREEN_SHIFT), look: scrC.clone().add(SCREEN_SHIFT) };
     const DOOR = { cam: V(2.1, 2.1, 5.3), look: V(0.1, 0.6, 1.5) };
 
     // ----- 分鏡表 -----
     //  act(S, u, dur)：u = 這一段開始後經過的秒數（0 ~ dur），把結果寫進狀態 S
     const STORYBOARD = [
-      { name: '片頭', dur: 4, cam: V(11.5, 2.8, 2.2), look: V(0, 2.3, 0.3),
+      { name: '片頭', dur: 4, cam: V(11.5, 2.8, 2.2), look: V(0, 1.6, 2.6),
         act: (S, u) => { S.introT = u; } },
 
-      { name: '總覽', tag: '總覽', card: '準備物品', dur: 6, cam: V(1.6, 4.7, 9.6), look: V(0, 0.7, 0.6),
+      { name: '總覽', tag: '總覽', card: '準備物品', desc: '分析儀、筆電、手機 App 與檢測試片，確認都已就位。', dur: 6, cam: V(1.6, 4.7, 9.6), look: V(0, 0.7, 0.6),
         act: (S, u, d) => { S.labels = [u, d]; } },
 
-      { name: 'STEP 1', tag: 'STEP 1', card: '開啟電源', dur: 5, cam: V(2.7, 3.7, 2.5), look: V(0.7, 1.4, -0.5),
+      { name: 'STEP 1', tag: 'STEP 1', card: '開啟電源', desc: '按下右後方電源鍵，綠色指示燈亮起後等待開機。', dur: 5, cam: V(2.7, 3.7, 2.5), look: V(0.7, 1.4, -0.5),
         act: (S, u) => {
           S.btnPress = ramp(u, 0.8, 1.0) - ramp(u, 1.1, 1.4);     // 按下電源鍵再彈起
           S.ripple = (u - 0.9) / 0.8;                              // 按鍵漣漪
@@ -897,13 +934,13 @@
           if (u >= 4.8) S.analyzer = ['home'];
         } },
 
-      { name: 'STEP 2', tag: 'STEP 2', card: '開始檢測', dur: 5, ...SCREEN,
+      { name: 'STEP 2', tag: 'STEP 2', card: '開始檢測', desc: '在首頁點選綠色「開始檢測」按鈕。', dur: 5, ...SCREEN,
         act: (S, u) => {
           S.analyzer = ['home', u >= 2 && u < 2.8 ? { tap: q((u - 2) / 0.8, 0.05) } : undefined];
           if (u >= 3.6) S.analyzer = ['loginQR'];
         } },
 
-      { name: 'STEP 3', tag: 'STEP 3', card: '會員 App 登入', dur: 5, cam: V(3.0, 3.3, 5.6), look: V(1.7, 1.0, 0.2),
+      { name: 'STEP 3', tag: 'STEP 3', card: '會員 App 登入', desc: '用手機 App 掃描螢幕上的 QR Code 完成登入。', dur: 5, cam: V(3.0, 3.3, 5.6), look: V(1.7, 1.0, 0.2),
         act: (S, u) => {
           if (u >= 0.6) S.phone = ['camera'];
           S.loginLink = [ramp(u, 1.2, 2.4), ramp(u, 1.1, 1.3) * (1 - ramp(u, 4.2, 4.8))];   // [延伸進度, 透明度]
@@ -911,25 +948,25 @@
           if (u >= 3.5) S.analyzer = ['insertStrip'];
         } },
 
-      { name: 'STEP 4', tag: 'STEP 4', card: '插入試片', dur: 6, ...DOOR,
+      { name: 'STEP 4', tag: 'STEP 4', card: '插入試片', desc: '打開前方艙門，將試片平穩推入到底再關門。', dur: 6, ...DOOR,
         act: (S, u) => {
           S.door = ramp(u, 0.4, 1.4) - ramp(u, 4.3, 5.2);          // 開門 → 關門
           S.strip = ramp(u, 1.6, 3.2) + ramp(u, 3.2, 4.0);         // 0 盒內 → 1 沿弧線到門口 → 2 推進機器
         } },
 
-      { name: 'STEP 5', tag: 'STEP 5', card: '掃描試片', dur: 5, ...SCREEN,
+      { name: 'STEP 5', tag: 'STEP 5', card: '掃描試片', desc: '儀器自動讀取試片資訊，顯示驗證成功即可。', dur: 5, ...SCREEN,
         act: (S, u) => { S.analyzer = u < 3 ? ['scanning', q(u * 5, 0.1)] : ['verified']; } },
 
-      { name: 'STEP 6', tag: 'STEP 6', card: '等待反應', dur: 5, ...SCREEN,
+      { name: 'STEP 6', tag: 'STEP 6', card: '等待反應', desc: '靜置等待倒數結束，期間請勿開啟艙門。', badge: '縮時示範', dur: 5, ...SCREEN,
         act: (S, u, d) => {
           const k = clamp01(u / (d - 0.4));                        // 15 → 0，最後 0.4 秒停在 0
-          S.analyzer = ['countdown', { sec: Math.ceil(15 * (1 - k)), total: 15, frac: q(1 - k, 0.005), badge: '縮時示範' }];
+          S.analyzer = ['countdown', { sec: Math.ceil(15 * (1 - k)), total: 15, frac: q(1 - k, 0.005) }];
         } },
 
-      { name: 'STEP 7', tag: 'STEP 7', card: '分析與結果', dur: 5, ...SCREEN,
+      { name: 'STEP 7', tag: 'STEP 7', card: '分析與結果', desc: '儀器自動分析，完成後顯示檢測數值。', dur: 5, ...SCREEN,
         act: (S, u) => { S.analyzer = u < 3.6 ? ['analyzing', Math.round(clamp01(u / 3.4) * 100)] : ['result', 5.0]; } },
 
-      { name: 'STEP 8', tag: 'STEP 8', card: '結果同步', dur: 6, cam: V(0.4, 11.3, 5.9), look: V(0, 0, 0.6),
+      { name: 'STEP 8', tag: 'STEP 8', card: '結果同步', desc: '結果自動上傳，手機 App 與後台同步更新。', dur: 6, cam: V(0.4, 11.3, 5.9), look: V(0, 0, 0.6),
         act: (S, u) => {
           if (u >= 0.2) S.analyzer = ['saved', 5.0];
           S.sync = 0.55 * ramp(u, 0.4, 0.9) * (1 - ramp(u, 5.2, 5.8));   // 虛線透明度
@@ -938,7 +975,7 @@
           if (u >= 3.2) S.laptop = ['table', 5.0];
         } },
 
-      { name: 'STEP 9', tag: 'STEP 9', card: '取出試片', dur: 5, ...DOOR,
+      { name: 'STEP 9', tag: 'STEP 9', card: '取出試片', desc: '打開艙門取出試片，儀器回到首頁。', dur: 5, ...DOOR,
         act: (S, u) => {
           S.door = ramp(u, 0.3, 1.2) - ramp(u, 3.9, 4.7);
           S.strip = 2 - ramp(u, 1.4, 2.2) - ramp(u, 2.2, 3.9);     // 滑出到門口 → 沿弧線回到盒子
@@ -1098,49 +1135,92 @@
       showParticles(dotsLaptop, S.syncT, 1.3);
     }
 
-    // ----- 字卡、設備標籤、淡入淡出 -----
+    // ----- 影片字卡：片頭、進度條、說明卡、縮時示範、片尾 -----
     const $ = id => document.getElementById(id);
     const titleCard = $('titleCard'), endCard = $('endCard'), fadeEl = $('fade');
-    const stepEl = $('step'), stepNo = stepEl.querySelector('.no'), stepTitle = stepEl.querySelector('.title');
-    const LABELS = [
-      [V(-0.3, 2.35, 0), 'QA-100 分析儀'],
-      [V(-3.5, 1.8, 0.0), '筆電・後台系統'],
-      [V(3.3, 1.85, 0.5), '手機・會員 App'],
-      [V(0.3, 0.45, 2.4), '檢測試片'],
+    const progressEl = $('progress'), badgeEl = $('badge');
+    const cardEl = $('card'), cardTag = cardEl.querySelector('.tag');
+    const cardTitle = cardEl.querySelector('.title'), cardDesc = cardEl.querySelector('.desc');
+
+    // 進度條：每個 STEP 一個圓點
+    const STEP_SEGS = STORYBOARD.filter(s => /^STEP/.test(s.tag || ''));
+    const dots = STEP_SEGS.map(() => {
+      const d = document.createElement('div');
+      d.className = 'dot';
+      progressEl.appendChild(d);
+      return d;
+    });
+
+    // 總覽：設備標籤＋指引線（CSS2DRenderer，跟著 3D 位置走）
+    const labelRenderer = new CSS2DRenderer();
+    Object.assign(labelRenderer.domElement.style, { position: 'absolute', inset: '0', pointerEvents: 'none' });
+    stage.insertBefore(labelRenderer.domElement, stage.firstChild);   // 放在其他字卡下面
+    const DEVICE_TAGS = [
+      [V(-0.3, 1.95, 0.05), 'QA-100 分析儀'],
+      [V(-3.6, 1.42, 0.05), '筆電・後台系統'],
+      [V(3.3, 1.38, 0.42), '手機・會員 App'],
+      [V(0.3, 0.17, 2.4), '檢測試片'],
     ].map(([pos, text]) => {
       const el = document.createElement('div');
-      el.className = 'label';
-      el.textContent = text;
-      $('labels').appendChild(el);
-      return { pos, el };
+      el.className = 'devtag';
+      el.innerHTML = `<div class="pill"></div><div class="stem"></div><div class="end"></div>`;
+      el.querySelector('.pill').textContent = text;
+      const obj = new CSS2DObject(el);
+      obj.center.set(0.5, 1);           // 元素底部（指引線末端）對準設備
+      obj.position.copy(pos);
+      scene.add(obj);
+      return { obj, el, pill: el.querySelector('.pill'), stem: el.querySelector('.stem') };
     });
-    let shownSeg = -1;
-    const tmpV = new THREE.Vector3();
-    function updateOverlay(t, S) {
-      const introDur = STORYBOARD[0].dur;
-      titleCard.style.opacity = ramp(S.introT, 0.4, 1.6) * (1 - ramp(S.introT, introDur - 0.7, introDur - 0.1));
-      titleCard.style.transform = `translateY(${(1 - ramp(S.introT, 0.4, 1.6)) * 1.5}cqw)`;
-      endCard.style.opacity = ramp(S.outroT, 1.0, 2.2);
-      fadeEl.style.opacity = Math.max(1 - ramp(t, 0, 1), 0.88 * ramp(S.outroT, 0.2, 1.6));
 
-      const i = segIndexAt(t), seg = STORYBOARD[i];
+    let shownSeg = -1;
+    function updateOverlay(t, S) {
+      // 片頭：左側大標題淡入淡出
+      const introDur = STORYBOARD[0].dur;
+      const tin = ramp(S.introT, 0.4, 1.5), tout = ramp(S.introT, introDur - 0.8, introDur - 0.1);
+      titleCard.style.opacity = tin * (1 - tout);
+      titleCard.style.transform = `translate(${(tin - 1) * 2}cqw, -50%)`;
+
+      // 片尾：畫面變淡，置中產品名
+      endCard.style.opacity = ramp(S.outroT, 1.0, 2.2);
+      endCard.style.transform = `translateY(${(1 - ramp(S.outroT, 1.0, 2.2)) * 1.5}cqw)`;
+      fadeEl.style.opacity = Math.max(1 - ramp(t, 0, 1), 0.9 * ramp(S.outroT, 0.2, 1.6));
+
+      const i = segIndexAt(t), seg = STORYBOARD[i], u = t - seg.start;
+
+      // 左上進度條：總覽到 STEP 9 期間顯示
+      const first = STORYBOARD[1], last = STEP_SEGS[STEP_SEGS.length - 1];
+      progressEl.style.opacity = ramp(t, first.start + 0.3, first.start + 0.9) *
+        (1 - ramp(t, last.start + last.dur - 0.3, last.start + last.dur + 0.3));
+      const stepNo = STEP_SEGS.indexOf(seg);
+      dots.forEach((d, k) => {
+        d.classList.toggle('now', k === stepNo);
+        d.classList.toggle('done', stepNo >= 0 && k < stepNo);
+      });
+
+      // 左下說明卡：換段時由下往上滑入
       if (i !== shownSeg) {
         shownSeg = i;
-        stepNo.textContent = seg.tag || '';
-        stepTitle.textContent = seg.card || '';
+        cardTag.textContent = seg.tag || '';
+        cardTitle.textContent = seg.card || '';
+        cardDesc.textContent = seg.desc || '';
       }
-      const u = t - seg.start;
-      stepEl.style.opacity = seg.card ? ramp(u, 0.3, 0.9) * (1 - ramp(u, seg.dur - 0.5, seg.dur - 0.1)) : 0;
+      const cin = ramp(u, 0.25, 0.85), cout = ramp(u, seg.dur - 0.45, seg.dur - 0.05);
+      cardEl.style.opacity = seg.card ? cin * (1 - cout) : 0;
+      cardEl.style.transform = `translateY(${(1 - cin) * 3}cqw)`;
 
+      // 右上縮時示範
+      badgeEl.style.opacity = seg.badge ? ramp(u, 0.2, 0.6) * (1 - ramp(u, seg.dur - 0.4, seg.dur - 0.05)) : 0;
+      if (seg.badge) badgeEl.textContent = seg.badge;
+
+      // 總覽設備標籤：依序出現，指引線往下長
       const [lu, ld] = S.labels;
-      LABELS.forEach((L, k) => {
-        const o = ramp(lu, 0.6 + k * 0.8, 1.1 + k * 0.8) * (1 - ramp(lu, ld - 0.6, ld - 0.1));
+      DEVICE_TAGS.forEach((L, k) => {
+        const a = 0.6 + k * 0.8;
+        const o = ramp(lu, a, a + 0.5) * (1 - ramp(lu, ld - 0.6, ld - 0.1));
+        L.obj.visible = o > 0;
         L.el.style.opacity = o;
-        if (o <= 0) return;
-        tmpV.copy(L.pos).project(camera);
-        L.el.style.left = `${(tmpV.x * 0.5 + 0.5) * 100}%`;
-        L.el.style.top = `${(-tmpV.y * 0.5 + 0.5) * 100}%`;
-        L.el.style.marginTop = `${1 - o}cqw`;
+        L.stem.style.transform = `scaleY(${ramp(lu, a, a + 0.5)})`;
+        L.pill.style.transform = `translateY(${(1 - ramp(lu, a, a + 0.5)) * 1.2}cqw)`;
       });
     }
 
@@ -1225,6 +1305,7 @@
       const w = stage.clientWidth;
       const h = stage.clientHeight;
       renderer.setSize(w, h, false);
+      labelRenderer.setSize(w, h);
       camera.aspect = w / h;   // 永遠是 16:9
       camera.updateProjectionMatrix();
     }
@@ -1261,6 +1342,7 @@
       }
 
       updateOverlay(T, S);
+      labelRenderer.render(scene, camera);
       const label = `${fmtTime(T)} / ${fmtTime(DURATION)}`;
       if (timeEl.textContent !== label) timeEl.textContent = label;
       const pct = `${T / DURATION * 100}%`;
