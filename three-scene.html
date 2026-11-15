@@ -143,13 +143,14 @@
     wedge.position.set(0.4, BODY_H, 0);   // x 範圍 -1.0 ~ 0.4（偏左，右後留給電源鍵）
     analyzer.add(wedge);
 
-    // 螢幕外框 + 黑色螢幕（貼在楔形斜面上）
+    // 全版黑色觸控螢幕（無白邊，蓋滿整個楔形斜面）
     const slope = Math.atan2(0.42, 0.8);
-    const bezel = rbox(1.36, 0.06, 0.88, 0.03, M.offWhite);
+    const SLOPE_LEN = Math.hypot(0.8, 0.42);
+    const bezel = rbox(1.4, 0.05, SLOPE_LEN, 0.02, M.screen);
     bezel.rotation.x = slope;
-    bezel.position.set(-0.3, BODY_H + 0.21 + 0.03, -0.05);
+    bezel.position.set(-0.3, BODY_H + 0.21 + 0.025, -0.05);
     analyzer.add(bezel);
-    const touchScreen = box(1.22, 0.01, 0.74, M.screen);
+    const touchScreen = box(1.38, 0.006, SLOPE_LEN - 0.02, M.screen);
     touchScreen.name = 'analyzerScreen';
     touchScreen.position.y = 0.032;
     bezel.add(touchScreen);
@@ -255,12 +256,34 @@
     phoneScreen.position.set(0, phone.position.y, 0.036);
     lean.add(phoneScreen);
 
-    // ---------- 前方桌面：白色檢測試片（側邊藍色條紋） ----------
+    // ---------- 前方桌面：小盒子（無蓋）＋ 白色檢測試片（側邊藍色條紋） ----------
+    const stripBox = new THREE.Group();
+    stripBox.name = 'stripBox';
+    stripBox.position.set(0.3, 0, 2.4);
+    stripBox.rotation.y = 0.15;
+    scene.add(stripBox);
+
+    const BOX_W = 1.8, BOX_D = 0.56, BOX_H = 0.16, WALL = 0.04, FLOOR = 0.03;
+    const trayMat = new THREE.MeshStandardMaterial({ color: 0xd4dbe2, roughness: 0.6 });
+    const trayFloor = box(BOX_W, FLOOR, BOX_D, trayMat);
+    trayFloor.position.y = FLOOR / 2;
+    stripBox.add(trayFloor);
+    [  // [寬, 深, x, z]：前、後、左、右四面牆
+      [BOX_W, WALL, 0,  BOX_D / 2 - WALL / 2],
+      [BOX_W, WALL, 0, -BOX_D / 2 + WALL / 2],
+      [WALL, BOX_D, -BOX_W / 2 + WALL / 2, 0],
+      [WALL, BOX_D,  BOX_W / 2 - WALL / 2, 0],
+    ].forEach(([w, d, x, z]) => {
+      const wall = box(w, BOX_H, d, trayMat);
+      wall.position.set(x, BOX_H / 2, z);
+      stripBox.add(wall);
+    });
+
+    // 試片：放在盒底上
     const strip = new THREE.Group();
     strip.name = 'testStrip';
-    strip.position.set(0.3, 0, 2.4);
-    strip.rotation.y = 0.15;
-    scene.add(strip);
+    strip.position.y = FLOOR;
+    stripBox.add(strip);
 
     const stripBody = rbox(1.6, 0.03, 0.36, 0.01, M.white);
     stripBody.position.y = 0.015;
@@ -270,7 +293,7 @@
     strip.add(stripStripe);
 
     // 所有設備都投射 / 接收陰影
-    [analyzer, laptop, phoneStand, strip].forEach(g =>
+    [analyzer, laptop, phoneStand, stripBox].forEach(g =>
       g.traverse(o => { if (o.isMesh) { o.castShadow = o !== ring; o.receiveShadow = true; } })
     );
 
